@@ -85,6 +85,7 @@ class Learner:
         self.reset(cfg)
 
     def reset(self, cfg):
+        self.baselined = False               # first run drives the incumbent unmutated
         self.theta = [1.0, 1.0, 1.0, 1.0]   # normalized incumbent
         self.proposal = None                 # normalized, set by arm()
         self.sigma = float(cfg['sigma0'])
@@ -101,7 +102,7 @@ class Learner:
         return {'theta': list(self.theta), 'sigma': self.sigma,
                 'speed': self.speed, 'wins': self.wins, 'fails': self.fails,
                 'episode': self.episode, 'best': dict(self.best),
-                'best_dur': dict(self.best_dur)}
+                'best_dur': dict(self.best_dur), 'baselined': self.baselined}
 
     def restore(self, snap):
         self.theta = list(snap['theta'])
@@ -112,6 +113,7 @@ class Learner:
         self.episode = snap['episode']
         self.best = dict(snap['best'])
         self.best_dur = dict(snap.get('best_dur', {}))
+        self.baselined = snap.get('baselined', True)
         self.proposal = None
 
     def gains(self, norm):
@@ -119,6 +121,11 @@ class Learner:
         return {k: round(norm[i] * nominal[k], 5) for i, k in enumerate(GAIN_KEYS)}
 
     def arm(self, cfg):
+        if not self.baselined:
+            # Baseline run: drive the starting gains exactly as given, so
+            # their lap anchors the pace bar before any mutation competes.
+            self.proposal = list(self.theta)
+            return self.gains(self.proposal)
         lo, hi = NORM_CLAMP
         self.proposal = [max(lo, min(hi, t + self.sigma * random.gauss(0, 1)))
                          for t in self.theta]
@@ -127,6 +134,7 @@ class Learner:
     def label(self, outcome, cfg):
         """Apply one Success or Fail. Returns nothing; caller snapshots."""
         self.episode += 1
+        self.baselined = True
         if outcome == 'success':
             if self.proposal is not None:
                 self.theta = list(self.proposal)
@@ -200,7 +208,8 @@ class Session:
         self.history = [{'ep': r['ep'], 'speed': r['speed'],
                          'outcome': r['outcome'], 'sigma': r['sigma'],
                          'gains': r['gains'], 't': r.get('t'),
-                         'duration': r.get('duration')} for r in labels][-500:]
+                         'duration': r.get('duration'),
+                         'distance': r.get('distance')} for r in labels][-500:]
 
     def arm(self, cfg):
         if self.phase != 'IDLE':
@@ -262,13 +271,15 @@ class Session:
         row = {'ep': self.learner.episode, 't': time.strftime('%H:%M:%S'),
                'speed': round(speed, 3), 'gains': gains, 'sigma': round(sigma, 4),
                'outcome': outcome, 'duration': self.last_duration,
+               'distance': round(node._dist, 1) if node else None,
                'state_after': self.learner.snapshot()}
         with open(LEDGER, 'a') as f:
             f.write(json.dumps(row) + '\n')
         self.history.append({'ep': row['ep'], 'speed': row['speed'],
                              'outcome': outcome, 'sigma': row['sigma'],
                              'gains': gains, 't': row['t'],
-                             'duration': self.last_duration})
+                             'duration': self.last_duration,
+                             'distance': row['distance']})
         self.history = self.history[-500:]
         self.phase = 'IDLE'
         self.armed_gains = None
@@ -315,14 +326,21 @@ class EpsNode(Node):
         self._trim = 0.0
         self._v = 0.0
         self._v_stamp = 0.0
+        self._dist = 0.0
         self._last_error = 0.0
         self._last_speed_error = 0.0
         self._telemetry = {'error': None, 'steer': 0.0, 'speed_cmd': 0.0,
                            'scan_seen': False}
 
     def _odom_cb(self, msg):
+        now = time.monotonic()
+        if self.session.phase == 'RUNNING':
+            if self._v_stamp:
+                self._dist += max(0.0, self._v) * min(now - self._v_stamp, 0.1)
+        else:
+            self._dist = 0.0
         self._v = msg.twist.twist.linear.x
-        self._v_stamp = time.monotonic()
+        self._v_stamp = now
 
     def _mean_at(self, msg, deg, window):
         n = len(msg.ranges)
@@ -370,7 +388,7 @@ class EpsNode(Node):
         # value is the constant throttle when the learned speed gains are
         # zero; nonzero gains bend it toward the road-shaped target using
         # measured speed. Stale odometry falls back to the constant command.
-        road = min(corridor[len(degs) // 2], corridor[best])
+        road = corridor[best]  # the chosen heading's furthest distance
         target = s.armed_speed * p['max_mps'] * min(road / la, 1.0)
         serr = target - self._v
         gains_off = g['speed_kp'] == 0 and g['speed_kd'] == 0
@@ -462,6 +480,7 @@ class Handler(BaseHTTPRequestHandler):
                 'duration': session.last_duration,
                 'best_lap': session.learner.best_dur.get(f'{ln.speed:.3f}'),
                 'can_undo': session.prev_snapshot is not None,
+                'baselined': ln.baselined,
                 'hyper': {k: cfg[k] for k in HYPER_KEYS},
                 'init': {**cfg['nominal'], 'start_speed': cfg['speed_floor'],
                          **{k: cfg[k] for k in PLANT_INIT_KEYS}},
