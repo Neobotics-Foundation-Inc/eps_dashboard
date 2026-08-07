@@ -49,7 +49,8 @@ INIT_MARK = BASE / '.init_set'   # exists once the starting point is committed
 
 GAIN_KEYS = ('kp', 'kd', 'speed_kp', 'speed_kd')
 PLANT_INIT_KEYS = ('width', 'window', 'side_weight', 'lookahead')  # set once, never learned
-NORM_CLAMP = (0.2, 5.0)     # normalized gain bounds: 0.2x .. 5x nominal
+NORM_CLAMP = (0.5, 2.0)     # proposals stay within half..double the set values
+MUTATE_SCALE = (1.0, 1.0, 0.5, 0.5)  # per-gain step weight: speed gains move gently
 SEARCH_STEP = 2             # gap follower constants, as in wallfollow
 CENTER_BIAS = 0.006
 HALF_CLEAR = 0.21
@@ -129,8 +130,8 @@ class Learner:
             self.proposal = list(self.theta)
             return self.gains(self.proposal)
         lo, hi = NORM_CLAMP
-        self.proposal = [max(lo, min(hi, t + self.sigma * random.gauss(0, 1)))
-                         for t in self.theta]
+        self.proposal = [max(lo, min(hi, t + self.sigma * MUTATE_SCALE[i] * random.gauss(0, 1)))
+                         for i, t in enumerate(self.theta)]
         return self.gains(self.proposal)
 
     def label(self, outcome, cfg):
