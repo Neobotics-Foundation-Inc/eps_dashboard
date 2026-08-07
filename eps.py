@@ -48,7 +48,7 @@ LEDGER = BASE / 'ledger.jsonl'
 INIT_MARK = BASE / '.init_set'   # exists once the starting point is committed
 
 GAIN_KEYS = ('kp', 'kd', 'speed_kp', 'speed_kd')
-PLANT_INIT_KEYS = ('width', 'window', 'side_weight', 'lookahead')  # set once at Starting point, never learned
+PLANT_INIT_KEYS = ('width', 'window', 'side_weight', 'lookahead')  # set once, never learned
 NORM_CLAMP = (0.2, 5.0)     # normalized gain bounds: 0.2x .. 5x nominal
 SEARCH_STEP = 2             # gap follower constants, as in wallfollow
 CENTER_BIAS = 0.006
