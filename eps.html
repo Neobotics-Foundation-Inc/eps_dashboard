@@ -127,7 +127,7 @@
   <div class="card">
     <h2>Ledger <a href="/ledger" download="ledger.jsonl" style="font-size:0.8rem; margin-left:0.6rem">download</a></h2>
     <table><thead><tr><th>ep</th><th>time</th><th>speed</th><th>outcome</th><th>sigma</th>
-      <th>kp</th><th>kd</th><th>speed_kp</th><th>speed_kd</th><th>dur s</th></tr></thead>
+      <th>kp</th><th>kd</th><th>speed_kp</th><th>speed_kd</th><th>dur s</th><th>dist m</th></tr></thead>
       <tbody id="ledger"></tbody></table>
   </div>
 </div>
@@ -280,7 +280,8 @@ function drawDurations(hist) {
   if (!rows.length) return;
   const eps = rows.map(h => h.ep);
   const e0 = eps[0], e1 = eps[eps.length - 1];
-  const dmax = Math.max(...rows.map(h => h.duration)) * 1.15;
+  const thr = (last && last.best_lap) ? last.best_lap * last.hyper.duration_slack : null;
+  const dmax = Math.max(...rows.map(h => h.duration), thr || 0) * 1.15;
   const px = ep => (ep - e0) / (e1 - e0 || 1) * (c.width - 40) + 30;
   const py = v => c.height - 18 - v / dmax * (c.height - 36);
   for (const h of rows) {
@@ -288,8 +289,16 @@ function drawDurations(hist) {
                 : h.outcome === 'slow' ? '#FFD700' : '#FF0033';
     x.beginPath(); x.arc(px(h.ep), py(h.duration), 4, 0, 7); x.fill();
   }
+  if (thr) {
+    x.strokeStyle = '#FFD700'; x.setLineDash([6, 4]); x.lineWidth = 1.5;
+    x.beginPath(); x.moveTo(0, py(thr)); x.lineTo(c.width, py(thr)); x.stroke();
+    x.setLineDash([]);
+    x.fillStyle = '#FFD700';
+    x.fillText(`slow if above ${thr.toFixed(1)}s  (best ${last.best_lap}s x ${last.hyper.duration_slack})`,
+               8, py(thr) - 5);
+  }
   x.fillStyle = '#F5F5F7'; x.font = '11px Helvetica';
-  x.fillText(`seconds per episode (0..${dmax.toFixed(0)}s)`, 8, 14);
+  x.fillText(`seconds per episode (0..${dmax.toFixed(0)}s) | dist: far = progress, short = slow`, 8, 14);
 }
 
 function fmtGains(g) {
@@ -300,7 +309,9 @@ function update() {
   return fetch('/state').then(r => r.json()).then(d => {
     last = d;
     document.getElementById('phase').textContent = d.phase +
-      (d.phase === 'RUNNING' ? '  (car driving)' : '');
+      (d.phase === 'RUNNING' ? '  (car driving)' : '') +
+      (!d.baselined && (d.phase === 'ARMED' || d.phase === 'RUNNING')
+        ? '  BASELINE RUN: your exact starting gains' : '');
     document.getElementById('ep').textContent = d.episode;
     document.getElementById('spd').textContent = d.speed;
     document.getElementById('sig').textContent = d.sigma;
@@ -349,7 +360,7 @@ function update() {
       `<tr><td>${h.ep}</td><td>${h.t ?? ''}</td><td>${h.speed}</td>
        <td class="${h.outcome === 'success' ? 'ok' : 'bad'}" ${h.outcome === 'slow' ? 'style="color:#B8860B"' : ''}>${h.outcome}</td>
        <td>${h.sigma}</td><td>${h.gains.kp}</td><td>${h.gains.kd}</td>
-       <td>${h.gains.speed_kp}</td><td>${h.gains.speed_kd}</td><td>${h.duration ?? ''}</td></tr>`).join('');
+       <td>${h.gains.speed_kp}</td><td>${h.gains.speed_kd}</td><td>${h.duration ?? ''}</td><td>${h.distance ?? ''}</td></tr>`).join('');
   }).catch(() => {});
 }
 

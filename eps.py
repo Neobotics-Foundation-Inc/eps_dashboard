@@ -87,6 +87,7 @@ class Learner:
         self.reset(cfg)
 
     def reset(self, cfg):
+        self.baselined = False               # first run drives the incumbent unmutated
         self.theta = [1.0, 1.0, 1.0, 1.0]   # normalized incumbent
         self.proposal = None                 # normalized, set by arm()
         self.sigma = float(cfg['sigma0'])
@@ -103,7 +104,7 @@ class Learner:
         return {'theta': list(self.theta), 'sigma': self.sigma,
                 'speed': self.speed, 'wins': self.wins, 'fails': self.fails,
                 'episode': self.episode, 'best': dict(self.best),
-                'best_dur': dict(self.best_dur)}
+                'best_dur': dict(self.best_dur), 'baselined': self.baselined}
 
     def restore(self, snap):
         self.theta = list(snap['theta'])
@@ -114,6 +115,7 @@ class Learner:
         self.episode = snap['episode']
         self.best = dict(snap['best'])
         self.best_dur = dict(snap.get('best_dur', {}))
+        self.baselined = snap.get('baselined', True)
         self.proposal = None
 
     def gains(self, norm):
@@ -121,6 +123,11 @@ class Learner:
         return {k: round(norm[i] * nominal[k], 5) for i, k in enumerate(GAIN_KEYS)}
 
     def arm(self, cfg):
+        if not self.baselined:
+            # Baseline run: drive the starting gains exactly as given, so
+            # their lap anchors the pace bar before any mutation competes.
+            self.proposal = list(self.theta)
+            return self.gains(self.proposal)
         lo, hi = NORM_CLAMP
         self.proposal = [max(lo, min(hi, t + self.sigma * random.gauss(0, 1)))
                          for t in self.theta]
@@ -129,6 +136,7 @@ class Learner:
     def label(self, outcome, cfg):
         """Apply one Success or Fail. Returns nothing; caller snapshots."""
         self.episode += 1
+        self.baselined = True
         if outcome == 'success':
             if self.proposal is not None:
                 self.theta = list(self.proposal)
@@ -202,7 +210,8 @@ class Session:
         self.history = [{'ep': r['ep'], 'speed': r['speed'],
                          'outcome': r['outcome'], 'sigma': r['sigma'],
                          'gains': r['gains'], 't': r.get('t'),
-                         'duration': r.get('duration')} for r in labels][-500:]
+                         'duration': r.get('duration'),
+                         'distance': r.get('distance')} for r in labels][-500:]
 
     def arm(self, cfg):
         if self.phase != 'IDLE':
@@ -264,13 +273,15 @@ class Session:
         row = {'ep': self.learner.episode, 't': time.strftime('%H:%M:%S'),
                'speed': round(speed, 3), 'gains': gains, 'sigma': round(sigma, 4),
                'outcome': outcome, 'duration': self.last_duration,
+               'distance': round(node._dist, 1) if node else None,
                'state_after': self.learner.snapshot()}
         with open(LEDGER, 'a') as f:
             f.write(json.dumps(row) + '\n')
         self.history.append({'ep': row['ep'], 'speed': row['speed'],
                              'outcome': outcome, 'sigma': row['sigma'],
                              'gains': gains, 't': row['t'],
-                             'duration': self.last_duration})
+                             'duration': self.last_duration,
+                             'distance': row['distance']})
         self.history = self.history[-500:]
         self.phase = 'IDLE'
         self.armed_gains = None
@@ -315,17 +326,23 @@ class EpsNode(Node):
         self._steer = 0.0
         self._speed = 0.0
         self._trim = 0.0
-        self._target_f = 0.0
         self._v = 0.0
         self._v_stamp = 0.0
+        self._dist = 0.0
         self._last_error = 0.0
         self._last_speed_error = 0.0
         self._telemetry = {'error': None, 'steer': 0.0, 'speed_cmd': 0.0,
                            'scan_seen': False}
 
     def _odom_cb(self, msg):
+        now = time.monotonic()
+        if self.session.phase == 'RUNNING':
+            if self._v_stamp:
+                self._dist += max(0.0, self._v) * min(now - self._v_stamp, 0.1)
+        else:
+            self._dist = 0.0
         self._v = msg.twist.twist.linear.x
-        self._v_stamp = time.monotonic()
+        self._v_stamp = now
 
     def _mean_at(self, msg, deg, window):
         n = len(msg.ranges)
@@ -369,46 +386,29 @@ class EpsNode(Node):
         self._last_error = error
         self._steer = max(-1.0, min(1.0, cmd))
 
-        # Same closed-loop speed as the wallfollow dashboard: target in real
-        # m/s from the road actually available (shorter of straight-ahead and
-        # chosen-line corridors), regulated against measured odometry speed.
-        road = min(corridor[len(degs) // 2], corridor[best])
+        # Speed, kept simple and identical to wallfollow: the staircase
+        # value is the constant throttle when the learned speed gains are
+        # zero; nonzero gains bend it toward the road-shaped target using
+        # measured speed. Stale odometry falls back to the constant command.
+        road = corridor[best]  # the chosen heading's furthest distance
         target = s.armed_speed * p['max_mps'] * min(road / la, 1.0)
-        if time.monotonic() - self._v_stamp > 0.5:
-            self._speed = 0.0
+        serr = target - self._v
+        gains_off = g['speed_kp'] == 0 and g['speed_kd'] == 0
+        odom_stale = time.monotonic() - self._v_stamp > 0.5
+        if s.armed_speed <= 1e-3:
             self._trim = 0.0
-            serr = 0.0
-            self._target_f = 0.0
+            self._speed = 0.0
+        elif gains_off or odom_stale:
+            self._trim = 0.0
+            self._speed = s.armed_speed
         else:
-            # Feed-forward from the road (target/max_mps) so straights start
-            # fast; the learned speed_kp/kd trim against measured speed.
-            # Low-pass the target: the road estimate jitters scan to scan
-            # and feed-forward would pump the throttle with it. ~0.35 s filter.
-            self._target_f += 0.35 * (target - self._target_f)
-            target = self._target_f
-            serr = target - self._v
-            if target <= 1e-3:
-                # Slider or curriculum at zero means STOP, unconditionally.
-                self._trim = 0.0
-                self._target_f = 0.0
-                self._speed = 0.0
-                self._last_speed_error = serr
-            else:
-                # Windup guards: never integrate up while the command is high
-                # but the car is not moving (SWB off, held, or blocked), and
-                # keep the trim small: the feed-forward carries the bulk.
-                blocked = self._v < 0.05 and self._speed > 0.3
-                if serr < 0 or not blocked:
-                    self._trim += g['speed_kp'] * serr \
-                        + g['speed_kd'] * (serr - self._last_speed_error)
-                if g['speed_kp'] == 0 and g['speed_kd'] == 0:
-                    # Gains at zero mean pure feed-forward: forget any
-                    # correction accumulated while they were active.
-                    self._trim = 0.0
-                self._trim = max(-0.5, min(0.3, self._trim))
-                self._speed = target / p['max_mps'] + self._trim
+            blocked = self._v < 0.05 and self._speed > 0.3
+            if serr < 0 or not blocked:
+                self._trim += g['speed_kp'] * serr \
+                    + g['speed_kd'] * (serr - self._last_speed_error)
+            self._trim = max(-1.0, min(0.3, self._trim))
+            self._speed = max(0.0, min(1.0, s.armed_speed + self._trim))
         self._last_speed_error = serr
-        self._speed = max(0.0, min(1.0, self._speed))
         self._telemetry.update({'error': round(error, 3),
                                 'steer': round(self._steer, 3),
                                 'speed_cmd': round(self._speed, 3)})
@@ -482,6 +482,7 @@ class Handler(BaseHTTPRequestHandler):
                 'duration': session.last_duration,
                 'best_lap': session.learner.best_dur.get(f'{ln.speed:.3f}'),
                 'can_undo': session.prev_snapshot is not None,
+                'baselined': ln.baselined,
                 'hyper': {k: cfg[k] for k in HYPER_KEYS},
                 'init': {**cfg['nominal'], 'start_speed': cfg['speed_floor'],
                          **{k: cfg[k] for k in PLANT_INIT_KEYS}},
