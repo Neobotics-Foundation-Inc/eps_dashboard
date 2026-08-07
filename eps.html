@@ -108,6 +108,8 @@
     <canvas id="stair" width="900" height="220"></canvas>
     <h2>Gains</h2>
     <canvas id="gainc" width="900" height="220"></canvas>
+    <h2>Episode duration &mdash; is it getting better?</h2>
+    <canvas id="durc" width="900" height="180"></canvas>
   </div>
   <div class="card">
     <h2>Ledger <a href="/ledger" download="ledger.jsonl" style="font-size:0.8rem; margin-left:0.6rem">download</a></h2>
@@ -255,6 +257,28 @@ function drawGains(hist) {
   x.fillText('dashed = nominal', lx + 10, 14);
 }
 
+function drawDurations(hist) {
+  // Fails surviving longer = steering improving before the first lap.
+  // Successes getting faster = pace improving at the held speed.
+  const c = document.getElementById('durc'), x = c.getContext('2d');
+  x.clearRect(0, 0, c.width, c.height);
+  const rows = hist.filter(h => h.duration != null);
+  if (!rows.length) return;
+  const eps = rows.map(h => h.ep);
+  const e0 = eps[0], e1 = eps[eps.length - 1];
+  const dmax = Math.max(...rows.map(h => h.duration)) * 1.15;
+  const px = ep => (ep - e0) / (e1 - e0 || 1) * (c.width - 40) + 30;
+  const py = v => c.height - 18 - v / dmax * (c.height - 36);
+  for (const h of rows) {
+    x.fillStyle = h.outcome === 'success' ? '#2E7D32'
+                : h.outcome === 'slow' ? '#FFD700' : '#FF0033';
+    x.beginPath(); x.arc(px(h.ep), py(h.duration), 4, 0, 7); x.fill();
+  }
+  x.fillStyle = '#F5F5F7'; x.font = '11px Helvetica';
+  x.fillText(`seconds per episode, 0..${dmax.toFixed(0)}s. Red dots rising = surviving longer. ` +
+             `Green dots falling = faster laps.`, 8, 14);
+}
+
 function fmtGains(g) {
   return g ? Object.entries(g).map(([k, v]) => `${k} ${v}`).join('  ') : '';
 }
@@ -307,6 +331,7 @@ function update() {
     const hist = d.history.filter(h => h.outcome !== 'discard');
     drawStaircase(hist);
     drawGains(hist);
+    drawDurations(hist);
     document.getElementById('ledger').innerHTML = hist.slice(-12).reverse().map(h =>
       `<tr><td>${h.ep}</td><td>${h.t ?? ''}</td><td>${h.speed}</td>
        <td class="${h.outcome === 'success' ? 'ok' : 'bad'}" ${h.outcome === 'slow' ? 'style="color:#B8860B"' : ''}>${h.outcome}</td>
