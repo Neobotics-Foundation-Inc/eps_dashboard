@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Episodic Policy Search (EPS) Dashboard</title>
+<style>
+  /* Neobotics tokens, same scheme as the wallfollow dashboard. */
+  :root { --white: #FFFFFF; --halo: #F5F5F7; --steel: #E2E2E2; --carbon: #1D1D27; --tarmac: #1B2036; --red: #FF0033; --go: #2E7D32; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: var(--white); color: var(--carbon); }
+  .topbar { background: var(--tarmac); color: var(--halo); padding: 0.8rem 1.5rem; display: flex; justify-content: space-between; align-items: center; }
+  .topbar button { background: transparent; border: 1px solid rgba(245, 245, 247, 0.5); color: var(--halo); font-family: inherit; padding: 0.4rem 1rem; border-radius: 6px; cursor: pointer; margin: 0 0 0 0.5rem; font-size: 0.85rem; }
+  .topbar button:hover { background: rgba(245, 245, 247, 0.15); }
+  .topbar h1 { font-family: 'Space Grotesk', 'Helvetica Neue', sans-serif; font-size: 1.3rem; }
+  .meta { color: rgba(245, 245, 247, 0.72); font-size: 0.85rem; margin-top: 0.2rem; }
+  .meta b { color: var(--white); }
+  main { padding: 1rem 1.5rem; }
+  .grid { display: grid; grid-template-columns: 340px 1fr; gap: 1rem; }
+  @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--white); border: 1px solid var(--steel); border-radius: 12px; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 6px 18px rgba(29, 29, 39, 0.08); }
+  .card h2 { font-family: 'Space Grotesk', 'Helvetica Neue', sans-serif; font-size: 1rem; color: var(--tarmac); margin-bottom: 0.5rem; }
+  canvas { background: var(--tarmac); border-radius: 6px; width: 100%; display: block; margin-bottom: 0.8rem; }
+  label { display: block; color: rgba(29, 29, 39, 0.6); font-size: 0.78rem; margin-top: 0.5rem; }
+  input { width: 100%; background: var(--white); border: 1px solid var(--steel); color: var(--carbon); font-family: inherit; padding: 0.3rem; border-radius: 6px; }
+  button { background: var(--white); border: 1px solid var(--tarmac); color: var(--tarmac); font-family: inherit; padding: 0.4rem 0.9rem; border-radius: 6px; margin: 0.4rem 0.4rem 0 0; cursor: pointer; font-size: 0.95rem; }
+  button:hover { background: var(--steel); }
+  button:disabled { opacity: 0.35; cursor: default; }
+  button.big { font-size: 1.5rem; padding: 1.6rem 1rem; flex: 1; margin: 0; font-family: 'Space Grotesk', sans-serif; }
+  button.start { font-size: 1.5rem; padding: 1.6rem 1rem; width: 98%; font-family: 'Space Grotesk', sans-serif; }
+  .small button { font-size: 0.78rem; padding: 0.25rem 0.6rem; border-color: var(--steel); color: rgba(29, 29, 39, 0.65); }
+  button.success { background: var(--go); border-color: var(--go); color: var(--white); }
+  button.fail { background: var(--red); border-color: var(--red); color: var(--white); }
+  button.primary { background: var(--tarmac); color: var(--halo); }
+  .phase { font-family: 'Space Grotesk', sans-serif; font-size: 1.6rem; color: var(--tarmac); margin: 0.2rem 0 0.6rem; }
+  .readout { font-size: 0.83rem; margin-top: 0.5rem; white-space: pre-line; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 0.5rem; }
+  th, td { text-align: left; padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--steel); }
+  th { color: var(--tarmac); }
+  .ok { color: var(--go); font-weight: bold; }
+  .bad { color: var(--red); font-weight: bold; }
+  #hp label { position: relative; }
+  #hp label:hover::after, #hp label:focus-within::after {
+    content: attr(data-tip); position: absolute; left: 0; bottom: 100%;
+    background: var(--tarmac); color: var(--halo); padding: 0.45rem 0.6rem;
+    border-radius: 6px; font-size: 0.78rem; line-height: 1.35; width: 230px;
+    z-index: 10; box-shadow: 0 6px 18px rgba(29, 29, 39, 0.3); pointer-events: none; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+<div>
+<h1>Episodic Policy Search (EPS) Dashboard</h1>
+<div class="meta">episode: <b id="ep">0</b> &bull; speed: <b id="spd">?</b> &bull; sigma: <b id="sig">?</b>
+  &bull; p*: <b id="pstar">?</b> &bull; observed: <b id="obs">?</b>
+  &bull; best speed: <b id="best">none</b></div>
+</div>
+<div>
+<button onclick="if(confirm('Reset everything? Gains to nominal, speed to floor, charts and ledger cleared (old ledger is archived on the car).')) post('/learner', {action:'reset'})">Reset learner</button>
+<button onclick="post('/learner', {action:'revert_best'})">Revert to best</button>
+</div>
+</div>
+<main>
+<div class="grid">
+<div>
+  <div class="card">
+    <h2>Starting point</h2>
+    <div id="init" style="display:grid; grid-template-columns:1fr 1fr; gap:0 0.8rem">
+      <label>kp<input id="init_kp" type="number" step="any"></label>
+      <label>kd<input id="init_kd" type="number" step="any"></label>
+      <label>speed_kp<input id="init_speed_kp" type="number" step="any"></label>
+      <label>speed_kd<input id="init_speed_kd" type="number" step="any"></label>
+      <label>starting speed<input id="init_start_speed" type="number" step="0.01" min="0" max="1"></label>
+    </div>
+    <button id="b_init" onclick="setInit()">Set starting point</button>
+    <span class="readout" id="initnote"></span>
+  </div>
+  <div class="card">
+    <div class="phase" id="phase">IDLE</div>
+    <button id="b_start" class="start primary" onclick="post('/episode/start')">START RUN (space)</button>
+    <div style="margin-top:0.6rem; display:flex; gap:0.6rem">
+      <button id="b_succ" class="big success" onclick="label('success')">SUCCESS (s)</button>
+      <button id="b_fail" class="big fail" onclick="label('fail')">FAIL (f)</button>
+    </div>
+    <div class="small" style="margin-top:0.6rem">
+      <button id="b_disc" onclick="label('discard')">Discard</button>
+      <button id="b_undo" onclick="post('/episode/undo')">Undo</button>
+    </div>
+    <div class="readout" id="gains"></div>
+  </div>
+  <div class="card">
+    <h2>Hyperparameters</h2>
+    <div id="hp" style="display:grid; grid-template-columns:1fr 1fr; gap:0 0.8rem"></div>
+    <button onclick="applyHyper()">Apply</button>
+    <button onclick="post('/save').then(() => note('Saved to eps.yaml'))">Save</button>
+    <button onclick="post('/load').then(() => { built = false; note('Loaded from eps.yaml'); })">Load</button>
+    <span class="readout" id="hpnote"></span>
+  </div>
+</div>
+<div>
+  <div class="card">
+    <h2>Equations, live</h2>
+    <div class="readout" id="eqs" style="font-family:ui-monospace, Menlo, monospace; font-size:0.82rem; line-height:1.7"></div>
+  </div>
+  <div class="card">
+    <h2>Speed staircase</h2>
+    <canvas id="stair" width="900" height="220"></canvas>
+    <h2>Gains</h2>
+    <canvas id="gainc" width="900" height="220"></canvas>
+  </div>
+  <div class="card">
+    <h2>Ledger <a href="/ledger" download="ledger.jsonl" style="font-size:0.8rem; margin-left:0.6rem">download</a></h2>
+    <table><thead><tr><th>ep</th><th>time</th><th>speed</th><th>outcome</th><th>sigma</th>
+      <th>kp</th><th>kd</th><th>speed_kp</th><th>speed_kd</th><th>dur s</th></tr></thead>
+      <tbody id="ledger"></tbody></table>
+  </div>
+</div>
+</div>
+</main>
+
+<script>
+const HYPER_GROUPS = [
+  ['Learning rate', ['sigma0', 'sigma_min', 'sigma_max', 'a_up', 'a_down', 'sigma_kick']],
+  ['Speed staircase', ['speed_step', 'confirm_runs', 'speed_backoff', 'patience', 'speed_floor', 'speed_max']],
+  ['Cost function', ['duration_slack']],
+];
+const HYPER = HYPER_GROUPS.flatMap(([, ks]) => ks);
+const GAIN_COLORS = { kp: '#FF0033', kd: '#FFD700', speed_kp: '#7EC8E3', speed_kd: '#FFFFFF' };
+const TIPS = {
+  sigma0: 'Learning rate at the start (after Reset).',
+  a_up: 'Learning rate grows by this on every success.',
+  a_down: 'Learning rate shrinks by this on every fail. Near 1.0 = gentle.',
+  sigma_min: 'Learning rate floor. Raise this if learning feels slow.',
+  sigma_max: 'Learning rate ceiling. Lower this if proposals feel reckless.',
+  speed_step: 'Speed goes up by this after confirm_runs successes in a row.',
+  speed_backoff: 'Speed goes down by this after patience fails in a row.',
+  patience: 'Fails in a row before the speed backs off.',
+  confirm_runs: 'Successes in a row before the speed goes up.',
+  sigma_kick: 'Learning rate bump each time the speed goes up.',
+  speed_floor: 'Lowest speed. Reset starts here.',
+  speed_max: 'Hard cap. The instructor sets this for the room.',
+  duration_slack: 'A pass slower than best lap times this counts as slow and is rejected.',
+};
+let built = false, last = null;
+
+function post(path, body) {
+  return fetch(path, { method: 'POST', body: body ? JSON.stringify(body) : null })
+    .then(() => update());
+}
+function label(result) { return post('/episode/label', { result }); }
+
+const INIT_KEYS = ['kp', 'kd', 'speed_kp', 'speed_kd', 'start_speed'];
+let initFilled = false;
+
+function setInit() {
+  const out = {};
+  for (const k of INIT_KEYS) out[k] = parseFloat(document.getElementById('init_' + k).value);
+  post('/init', out).then(() => { built = false; initFilled = false; });
+}
+
+function refreshInit(d) {
+  const locked = d.init_locked;
+  for (const k of INIT_KEYS) {
+    const el = document.getElementById('init_' + k);
+    el.disabled = locked;
+    if (!initFilled && document.activeElement !== el) el.value = d.init[k];
+  }
+  if (!locked) initFilled = true;
+  document.getElementById('b_init').disabled = locked;
+  document.getElementById('initnote').textContent = locked
+    ? 'Locked. Reset to change.'
+    : 'Set before the first run. Locks once set.';
+}
+
+function note(msg) {
+  document.getElementById('hpnote').textContent = msg + ' at ' + new Date().toLocaleTimeString();
+}
+
+function applyHyper() {
+  const out = {};
+  for (const k of HYPER) out[k] = parseFloat(document.getElementById('hp_' + k).value);
+  fetch('/hyper', { method: 'POST', body: JSON.stringify(out) })
+    .then(r => r.json()).then(d => {
+      const corrected = HYPER.filter(k => d.hyper[k] !== out[k]);
+      built = false;  // re-render with the values the server actually holds
+      note(corrected.length
+        ? 'Applied, corrected: ' + corrected.map(k => `${k}=${d.hyper[k]}`).join(', ')
+        : 'Applied');
+      update();
+    });
+}
+
+function buildHyper(h) {
+  if (built) return;
+  built = true;
+  document.getElementById('hp').innerHTML = HYPER_GROUPS.map(([g, ks]) =>
+    `<h3 style="grid-column:1/-1; font-size:0.82rem; color:var(--tarmac); margin-top:0.7rem">${g}</h3>` +
+    ks.map(k =>
+      `<label data-tip="${TIPS[k]}" style="cursor:help">${k}<input id="hp_${k}" type="number" step="any" value="${h[k]}"></label>`
+    ).join('')).join('');
+}
+
+function drawStaircase(hist) {
+  const c = document.getElementById('stair'), x = c.getContext('2d');
+  x.clearRect(0, 0, c.width, c.height);
+  if (!hist.length) return;
+  const eps = hist.map(h => h.ep);
+  const e0 = eps[0], e1 = eps[eps.length - 1];
+  const smax = Math.max(...hist.map(h => h.speed)) * 1.15 || 1;
+  const px = ep => (ep - e0) / (e1 - e0 || 1) * (c.width - 40) + 30;
+  const py = v => c.height - 20 - v / smax * (c.height - 40);
+  x.strokeStyle = 'rgba(245,245,247,0.5)'; x.lineWidth = 1.5;
+  x.beginPath();
+  hist.forEach((h, i) => { i ? x.lineTo(px(h.ep), py(h.speed)) : x.moveTo(px(h.ep), py(h.speed)); });
+  x.stroke();
+  for (const h of hist) {
+    x.fillStyle = h.outcome === 'success' ? '#2E7D32'
+                : h.outcome === 'slow' ? '#FFD700' : '#FF0033';
+    x.beginPath(); x.arc(px(h.ep), py(h.speed), 4, 0, 7); x.fill();
+  }
+  x.fillStyle = '#F5F5F7'; x.font = '11px Helvetica';
+  x.fillText(`green = success, gold = passed but slow, red = fail (0..${smax.toFixed(2)})`, 8, 14);
+}
+
+function drawGains(hist) {
+  const c = document.getElementById('gainc'), x = c.getContext('2d');
+  x.clearRect(0, 0, c.width, c.height);
+  if (!hist.length || !last) return;
+  const nom = { kp: 0.5, kd: 4.0, speed_kp: 0.18, speed_kd: 0.05 };
+  const eps = hist.map(h => h.ep);
+  const e0 = eps[0], e1 = eps[eps.length - 1];
+  let vmax = 1;
+  for (const h of hist) for (const k in nom) vmax = Math.max(vmax, h.gains[k] / nom[k]);
+  const px = ep => (ep - e0) / (e1 - e0 || 1) * (c.width - 40) + 30;
+  const py = v => c.height - 20 - v / (vmax * 1.1) * (c.height - 40);
+  // nominal reference line at 1.0
+  x.strokeStyle = 'rgba(245,245,247,0.3)'; x.setLineDash([4, 4]);
+  x.beginPath(); x.moveTo(0, py(1)); x.lineTo(c.width, py(1)); x.stroke();
+  x.setLineDash([]);
+  for (const k in GAIN_COLORS) {
+    x.strokeStyle = GAIN_COLORS[k]; x.lineWidth = 1.5; x.beginPath();
+    hist.forEach((h, i) => {
+      const v = h.gains[k] / nom[k];
+      i ? x.lineTo(px(h.ep), py(v)) : x.moveTo(px(h.ep), py(v));
+    });
+    x.stroke();
+  }
+  x.font = '11px Helvetica';
+  let lx = 8;
+  for (const k in GAIN_COLORS) {
+    x.fillStyle = GAIN_COLORS[k]; x.fillText(k, lx, 14); lx += x.measureText(k).width + 14;
+  }
+  x.fillStyle = '#F5F5F7';
+  x.fillText('dashed = nominal', lx + 10, 14);
+}
+
+function fmtGains(g) {
+  return g ? Object.entries(g).map(([k, v]) => `${k} ${v}`).join('  ') : '';
+}
+
+function update() {
+  return fetch('/state').then(r => r.json()).then(d => {
+    last = d;
+    document.getElementById('phase').textContent = d.phase +
+      (d.phase === 'RUNNING' ? '  (car driving)' : '');
+    document.getElementById('ep').textContent = d.episode;
+    document.getElementById('spd').textContent = d.speed;
+    document.getElementById('sig').textContent = d.sigma;
+    document.getElementById('pstar').textContent = d.pstar ?? '?';
+    document.getElementById('obs').textContent = d.observed ?? 'n/a';
+    document.getElementById('best').textContent = d.best_speed ?? 'none';
+    const p = d.phase;
+    document.getElementById('b_start').disabled = p !== 'IDLE';
+    document.getElementById('b_succ').disabled = !(p === 'RUNNING' || p === 'AWAITING_LABEL');
+    document.getElementById('b_fail').disabled = !(p === 'RUNNING' || p === 'AWAITING_LABEL');
+    document.getElementById('b_disc').disabled = !(p === 'ARMED' || p === 'RUNNING' || p === 'AWAITING_LABEL');
+    document.getElementById('b_undo').disabled = !(p === 'IDLE' && d.can_undo);
+    document.getElementById('gains').textContent =
+      `incumbent:  ${fmtGains(d.incumbent)}` +
+      (d.armed ? `\narmed:      ${fmtGains(d.armed)}  at speed ${d.armed_speed}` : '') +
+      (d.best_lap ? `\nbest lap at this speed: ${d.best_lap}s` : '') +
+      (d.telemetry && d.telemetry.scan_seen
+        ? `\nlive: error ${d.telemetry.error ?? '?'}  steer ${d.telemetry.steer}  throttle ${d.telemetry.speed_cmd}`
+        : '\nlive: no lidar data');
+    buildHyper(d.hyper);
+    refreshInit(d);
+    const g = d.armed || d.incumbent, hy = d.hyper;
+    const src = d.armed ? 'armed proposal' : 'incumbent';
+    document.getElementById('eqs').textContent =
+      `CONTROLLER (every scan, using the ${src}):\n` +
+      `  steer    = kp*err + kd*derr          = ${g.kp}*err + ${g.kd}*derr\n` +
+      `  target   = speed * clearance * (1 - 0.5*|steer|),  speed = ${d.armed_speed ?? d.speed}\n` +
+      `  throttle += speed_kp*(target - v) + speed_kd*dv    = ${g.speed_kp}*(...) + ${g.speed_kd}*(...)\n` +
+      `\nSEARCH (each episode):\n` +
+      `  propose:  gains_new = gains + sigma*N(0,1),  sigma = ${d.sigma}\n` +
+      `  COST:     success = SUCCESS pressed AND lap <= best_lap * ${hy.duration_slack}\n` +
+      `  win:      keep gains_new,   sigma = min(sigma*${hy.a_up}, ${hy.sigma_max})\n` +
+      `  lose:     keep old gains,   sigma = max(sigma*${hy.a_down}, ${hy.sigma_min})`;
+    const hist = d.history.filter(h => h.outcome !== 'discard');
+    drawStaircase(hist);
+    drawGains(hist);
+    document.getElementById('ledger').innerHTML = hist.slice(-12).reverse().map(h =>
+      `<tr><td>${h.ep}</td><td>${h.t ?? ''}</td><td>${h.speed}</td>
+       <td class="${h.outcome === 'success' ? 'ok' : 'bad'}" ${h.outcome === 'slow' ? 'style="color:#B8860B"' : ''}>${h.outcome}</td>
+       <td>${h.sigma}</td><td>${h.gains.kp}</td><td>${h.gains.kd}</td>
+       <td>${h.gains.speed_kp}</td><td>${h.gains.speed_kd}</td><td>${h.duration ?? ''}</td></tr>`).join('');
+  }).catch(() => {});
+}
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space') { e.preventDefault(); post('/episode/start'); }
+  if (e.code === 'KeyS') label('success');
+  if (e.code === 'KeyF') label('fail');
+});
+
+update();
+setInterval(update, 500);
+</script>
+</body>
+</html>
