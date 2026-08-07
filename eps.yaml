@@ -15,7 +15,7 @@ speed_backoff: 0.02   # curriculum step down after patience fails
 patience: 3           # consecutive fails before backing the speed off
 confirm_runs: 2       # consecutive wins before promoting the speed
 sigma_kick: 1.5       # sigma bump when the speed promotes (task changed)
-speed_floor: 0.15     # curriculum floor; Reset learner returns here
+speed_floor: 0.12     # curriculum floor; Reset learner returns here
 speed_max: 0.35       # hard cap; instructor sets this for the venue
 duration_slack: 1.05  # a pass slower than best lap x this scores as slow (rejected)
 
@@ -24,7 +24,7 @@ max_mps: 4.0          # the car's top speed in m/s; staircase speed x this
                       # is the target the speed loop chases via odometry
 width: 70.0           # search this many degrees left and right of the nose
 side_weight: 0.0      # score bonus (m per degree) toward the right
-lookahead: 8.0        # meters; distances cap here
+lookahead: 10.0        # meters; distances cap here
 window: 10.0          # averaging window per ray, degrees
 
 scan_topic: /scan
