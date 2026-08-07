@@ -399,6 +399,10 @@ class EpsNode(Node):
                 if serr < 0 or not blocked:
                     self._trim += g['speed_kp'] * serr \
                         + g['speed_kd'] * (serr - self._last_speed_error)
+                if g['speed_kp'] == 0 and g['speed_kd'] == 0:
+                    # Gains at zero mean pure feed-forward: forget any
+                    # correction accumulated while they were active.
+                    self._trim = 0.0
                 self._trim = max(-0.5, min(0.3, self._trim))
                 self._speed = target / p['max_mps'] + self._trim
         self._last_speed_error = serr
