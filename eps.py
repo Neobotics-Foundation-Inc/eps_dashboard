@@ -379,13 +379,21 @@ class EpsNode(Node):
             # Feed-forward from the road (target/max_mps) so straights start
             # fast; the learned speed_kp/kd trim against measured speed.
             serr = target - self._v
-            saturated = (self._speed >= 1.0 and serr > 0) or \
-                        (self._speed <= 0.0 and serr < 0)
-            if not saturated:
-                self._trim += g['speed_kp'] * serr \
-                    + g['speed_kd'] * (serr - self._last_speed_error)
-            self._trim = max(-0.5, min(0.5, self._trim))
-            self._speed = target / p['max_mps'] + self._trim
+            if target <= 1e-3:
+                # Slider or curriculum at zero means STOP, unconditionally.
+                self._trim = 0.0
+                self._speed = 0.0
+                self._last_speed_error = serr
+            else:
+                # Windup guards: never integrate up while the command is high
+                # but the car is not moving (SWB off, held, or blocked), and
+                # keep the trim small: the feed-forward carries the bulk.
+                blocked = self._v < 0.05 and self._speed > 0.3
+                if serr < 0 or not blocked:
+                    self._trim += g['speed_kp'] * serr \
+                        + g['speed_kd'] * (serr - self._last_speed_error)
+                self._trim = max(-0.5, min(0.3, self._trim))
+                self._speed = target / p['max_mps'] + self._trim
         self._last_speed_error = serr
         self._speed = max(0.0, min(1.0, self._speed))
         self._telemetry.update({'error': round(error, 3),
