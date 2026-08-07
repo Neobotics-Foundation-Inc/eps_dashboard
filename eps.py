@@ -46,6 +46,7 @@ LEDGER = BASE / 'ledger.jsonl'
 INIT_MARK = BASE / '.init_set'   # exists once the starting point is committed
 
 GAIN_KEYS = ('kp', 'kd', 'speed_kp', 'speed_kd')
+PLANT_INIT_KEYS = ('width', 'window', 'side_weight', 'lookahead')  # set once at Starting point, never learned
 NORM_CLAMP = (0.2, 5.0)     # normalized gain bounds: 0.2x .. 5x nominal
 SEARCH_STEP = 2             # gap follower constants, as in wallfollow
 CENTER_BIAS = 0.006
@@ -416,13 +417,15 @@ def init_locked():
             or session.phase != 'IDLE' or len(session.history) > 0)
 
 
-def write_init_to_yaml(nominal, start_speed):
+def write_init_to_yaml(nominal, start_speed, plant):
     """Persist the starting point so a service restart keeps it."""
     text = YAML_PATH.read_text()
     import re
     for k, v in nominal.items():
         text = re.sub(rf'(?m)^  {k}: [-\d.eE+]+', f'  {k}: {v}', text)
     text = re.sub(r'(?m)^speed_floor: [-\d.eE+]+', f'speed_floor: {start_speed}', text)
+    for k, v in plant.items():
+        text = re.sub(rf'(?m)^{k}: [-\d.eE+]+', f'{k}: {v}', text)
     YAML_PATH.write_text(text)
 
 
@@ -452,7 +455,8 @@ class Handler(BaseHTTPRequestHandler):
                 'best_lap': session.learner.best_dur.get(f'{ln.speed:.3f}'),
                 'can_undo': session.prev_snapshot is not None,
                 'hyper': {k: cfg[k] for k in HYPER_KEYS},
-                'init': {**cfg['nominal'], 'start_speed': cfg['speed_floor']},
+                'init': {**cfg['nominal'], 'start_speed': cfg['speed_floor'],
+                         **{k: cfg[k] for k in PLANT_INIT_KEYS}},
                 'plant': {'lookahead': cfg['lookahead'], 'max_mps': cfg['max_mps']},
                 'init_locked': init_locked(),
             })
@@ -507,9 +511,13 @@ class Handler(BaseHTTPRequestHandler):
                     for k in GAIN_KEYS:
                         if k in data:
                             _cfg['nominal'][k] = float(data[k])
+                    for k in PLANT_INIT_KEYS:
+                        if k in data:
+                            _cfg[k] = float(data[k])
                     if 'start_speed' in data:
                         _cfg['speed_floor'] = max(0.0, min(1.0, float(data['start_speed'])))
-                    write_init_to_yaml(_cfg['nominal'], _cfg['speed_floor'])
+                    write_init_to_yaml(_cfg['nominal'], _cfg['speed_floor'],
+                                       {k: _cfg[k] for k in PLANT_INIT_KEYS})
                     cfg = dict(_cfg)
                 session.learner.reset(cfg)
                 INIT_MARK.touch()
