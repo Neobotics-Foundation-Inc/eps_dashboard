@@ -312,6 +312,7 @@ class EpsNode(Node):
         self.create_timer(1.0 / 15.0, self._actuate)
         self._steer = 0.0
         self._speed = 0.0
+        self._trim = 0.0
         self._v = 0.0
         self._v_stamp = 0.0
         self._last_error = 0.0
@@ -339,6 +340,7 @@ class EpsNode(Node):
         if s.phase != 'RUNNING' or s.armed_gains is None:
             self._steer = 0.0
             self._speed = 0.0
+            self._trim = 0.0
             self._last_error = 0.0
             self._last_speed_error = 0.0
             return
@@ -371,14 +373,19 @@ class EpsNode(Node):
         target = s.armed_speed * p['max_mps'] * min(road / la, 1.0)
         if time.monotonic() - self._v_stamp > 0.5:
             self._speed = 0.0
+            self._trim = 0.0
             serr = 0.0
         else:
+            # Feed-forward from the road (target/max_mps) so straights start
+            # fast; the learned speed_kp/kd trim against measured speed.
             serr = target - self._v
             saturated = (self._speed >= 1.0 and serr > 0) or \
                         (self._speed <= 0.0 and serr < 0)
             if not saturated:
-                self._speed += g['speed_kp'] * serr \
+                self._trim += g['speed_kp'] * serr \
                     + g['speed_kd'] * (serr - self._last_speed_error)
+            self._trim = max(-0.5, min(0.5, self._trim))
+            self._speed = target / p['max_mps'] + self._trim
         self._last_speed_error = serr
         self._speed = max(0.0, min(1.0, self._speed))
         self._telemetry.update({'error': round(error, 3),
