@@ -313,6 +313,7 @@ class EpsNode(Node):
         self._steer = 0.0
         self._speed = 0.0
         self._trim = 0.0
+        self._target_f = 0.0
         self._v = 0.0
         self._v_stamp = 0.0
         self._last_error = 0.0
@@ -375,13 +376,19 @@ class EpsNode(Node):
             self._speed = 0.0
             self._trim = 0.0
             serr = 0.0
+            self._target_f = 0.0
         else:
             # Feed-forward from the road (target/max_mps) so straights start
             # fast; the learned speed_kp/kd trim against measured speed.
+            # Low-pass the target: the road estimate jitters scan to scan
+            # and feed-forward would pump the throttle with it. ~0.35 s filter.
+            self._target_f += 0.35 * (target - self._target_f)
+            target = self._target_f
             serr = target - self._v
             if target <= 1e-3:
                 # Slider or curriculum at zero means STOP, unconditionally.
                 self._trim = 0.0
+                self._target_f = 0.0
                 self._speed = 0.0
                 self._last_speed_error = serr
             else:
