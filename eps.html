@@ -290,12 +290,20 @@ function drawDurations(hist) {
     x.beginPath(); x.arc(px(h.ep), py(h.duration), 4, 0, 7); x.fill();
   }
   if (thr) {
-    x.strokeStyle = '#FFD700'; x.setLineDash([6, 4]); x.lineWidth = 1.5;
+    x.setLineDash([6, 4]); x.lineWidth = 1.5;
+    x.strokeStyle = '#2E7D32';
+    x.beginPath(); x.moveTo(0, py(last.best_lap)); x.lineTo(c.width, py(last.best_lap)); x.stroke();
+    x.strokeStyle = '#FFD700';
     x.beginPath(); x.moveTo(0, py(thr)); x.lineTo(c.width, py(thr)); x.stroke();
     x.setLineDash([]);
+    x.fillStyle = '#2E7D32'; x.font = '11px Helvetica';
+    x.fillText(`success target: ${last.best_lap}s (best lap this speed)`, 8, py(last.best_lap) - 5);
     x.fillStyle = '#FFD700';
-    x.fillText(`slow if above ${thr.toFixed(1)}s  (best ${last.best_lap}s x ${last.hyper.duration_slack})`,
-               8, py(thr) - 5);
+    x.fillText(`slow if above: ${last.best_lap} x ${last.hyper.duration_slack} = ${thr.toFixed(1)}s`,
+               8, py(thr) + 13);
+  } else {
+    x.fillStyle = '#FFD700'; x.font = '11px Helvetica';
+    x.fillText('no successful lap at this speed yet: the first success sets the bar', 8, 28);
   }
   x.fillStyle = '#F5F5F7'; x.font = '11px Helvetica';
   x.fillText(`seconds per episode (0..${dmax.toFixed(0)}s) | dist: far = progress, short = slow`, 8, 14);
