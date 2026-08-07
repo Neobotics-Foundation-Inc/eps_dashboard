@@ -2,7 +2,7 @@
 
 Episodic Policy Search for the Neoracer, on port 8084. The gap follower from the wallfollow dashboard is the plant; a (1+1) evolution strategy learns its four PID coefficients from one Success or Fail press per episode. Sustained success raises the speed a notch; the lab's result is the highest speed the car holds and how many attempts it took.
 
-## Install
+## Installation
 
 On the car:
 
