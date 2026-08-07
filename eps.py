@@ -332,6 +332,8 @@ class EpsNode(Node):
 
     def _scan_cb(self, msg):
         self._telemetry['scan_seen'] = True
+        self._telemetry['v'] = round(self._v, 2)
+        self._telemetry['odom_fresh'] = (time.monotonic() - self._v_stamp) < 0.5
         s = self.session
         if s.phase != 'RUNNING' or s.armed_gains is None:
             self._steer = 0.0
@@ -451,6 +453,7 @@ class Handler(BaseHTTPRequestHandler):
                 'can_undo': session.prev_snapshot is not None,
                 'hyper': {k: cfg[k] for k in HYPER_KEYS},
                 'init': {**cfg['nominal'], 'start_speed': cfg['speed_floor']},
+                'plant': {'lookahead': cfg['lookahead'], 'max_mps': cfg['max_mps']},
                 'init_locked': init_locked(),
             })
             self._send(body.encode(), 'application/json')

@@ -287,14 +287,21 @@ function update() {
     refreshInit(d);
     const g = d.armed || d.incumbent, hy = d.hyper;
     const src = d.armed ? 'armed proposal' : 'incumbent';
+    const pl = d.plant, tv = d.telemetry || {};
+    const spd = d.armed_speed ?? d.speed;
+    const gate = d.best_lap
+      ? `lap <= ${d.best_lap} * ${hy.duration_slack} = ${(d.best_lap * hy.duration_slack).toFixed(1)}s`
+      : `first pass at this speed sets the bar`;
     document.getElementById('eqs').textContent =
       `CONTROLLER (every scan, using the ${src}):\n` +
       `  steer    = kp*err + kd*derr          = ${g.kp}*err + ${g.kd}*derr\n` +
-      `  target   = speed * clearance * (1 - 0.5*|steer|),  speed = ${d.armed_speed ?? d.speed}\n` +
-      `  throttle += speed_kp*(target - v) + speed_kd*dv    = ${g.speed_kp}*(...) + ${g.speed_kd}*(...)\n` +
+      `  target   = speed * max_mps * road/lookahead = ${spd} * ${pl.max_mps} * road/${pl.lookahead}` +
+      `  (target m/s)\n` +
+      `  throttle += speed_kp*(target - v_odom) + speed_kd*dv = ${g.speed_kp}*(...) + ${g.speed_kd}*(...)` +
+      `,  v_odom = ${tv.v ?? '?'} m/s${tv.odom_fresh === false ? '  [ODOM STALE: car will not drive]' : ''}\n` +
       `\nSEARCH (each episode):\n` +
       `  propose:  gains_new = gains + sigma*N(0,1),  sigma = ${d.sigma}\n` +
-      `  COST:     success = SUCCESS pressed AND lap <= best_lap * ${hy.duration_slack}\n` +
+      `  COST:     success = SUCCESS pressed AND ${gate}\n` +
       `  win:      keep gains_new,   sigma = min(sigma*${hy.a_up}, ${hy.sigma_max})\n` +
       `  lose:     keep old gains,   sigma = max(sigma*${hy.a_down}, ${hy.sigma_min})`;
     const hist = d.history.filter(h => h.outcome !== 'discard');
