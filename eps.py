@@ -313,7 +313,6 @@ class EpsNode(Node):
         self._steer = 0.0
         self._speed = 0.0
         self._trim = 0.0
-        self._target_f = 0.0
         self._v = 0.0
         self._v_stamp = 0.0
         self._last_error = 0.0
@@ -367,46 +366,29 @@ class EpsNode(Node):
         self._last_error = error
         self._steer = max(-1.0, min(1.0, cmd))
 
-        # Same closed-loop speed as the wallfollow dashboard: target in real
-        # m/s from the road actually available (shorter of straight-ahead and
-        # chosen-line corridors), regulated against measured odometry speed.
+        # Speed, kept simple and identical to wallfollow: the staircase
+        # value is the constant throttle when the learned speed gains are
+        # zero; nonzero gains bend it toward the road-shaped target using
+        # measured speed. Stale odometry falls back to the constant command.
         road = min(corridor[len(degs) // 2], corridor[best])
         target = s.armed_speed * p['max_mps'] * min(road / la, 1.0)
-        if time.monotonic() - self._v_stamp > 0.5:
-            self._speed = 0.0
+        serr = target - self._v
+        gains_off = g['speed_kp'] == 0 and g['speed_kd'] == 0
+        odom_stale = time.monotonic() - self._v_stamp > 0.5
+        if s.armed_speed <= 1e-3:
             self._trim = 0.0
-            serr = 0.0
-            self._target_f = 0.0
+            self._speed = 0.0
+        elif gains_off or odom_stale:
+            self._trim = 0.0
+            self._speed = s.armed_speed
         else:
-            # Feed-forward from the road (target/max_mps) so straights start
-            # fast; the learned speed_kp/kd trim against measured speed.
-            # Low-pass the target: the road estimate jitters scan to scan
-            # and feed-forward would pump the throttle with it. ~0.35 s filter.
-            self._target_f += 0.35 * (target - self._target_f)
-            target = self._target_f
-            serr = target - self._v
-            if target <= 1e-3:
-                # Slider or curriculum at zero means STOP, unconditionally.
-                self._trim = 0.0
-                self._target_f = 0.0
-                self._speed = 0.0
-                self._last_speed_error = serr
-            else:
-                # Windup guards: never integrate up while the command is high
-                # but the car is not moving (SWB off, held, or blocked), and
-                # keep the trim small: the feed-forward carries the bulk.
-                blocked = self._v < 0.05 and self._speed > 0.3
-                if serr < 0 or not blocked:
-                    self._trim += g['speed_kp'] * serr \
-                        + g['speed_kd'] * (serr - self._last_speed_error)
-                if g['speed_kp'] == 0 and g['speed_kd'] == 0:
-                    # Gains at zero mean pure feed-forward: forget any
-                    # correction accumulated while they were active.
-                    self._trim = 0.0
-                self._trim = max(-0.5, min(0.3, self._trim))
-                self._speed = target / p['max_mps'] + self._trim
+            blocked = self._v < 0.05 and self._speed > 0.3
+            if serr < 0 or not blocked:
+                self._trim += g['speed_kp'] * serr \
+                    + g['speed_kd'] * (serr - self._last_speed_error)
+            self._trim = max(-1.0, min(0.3, self._trim))
+            self._speed = max(0.0, min(1.0, s.armed_speed + self._trim))
         self._last_speed_error = serr
-        self._speed = max(0.0, min(1.0, self._speed))
         self._telemetry.update({'error': round(error, 3),
                                 'steer': round(self._steer, 3),
                                 'speed_cmd': round(self._speed, 3)})
