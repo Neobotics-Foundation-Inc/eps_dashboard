@@ -26,8 +26,10 @@
   button { background: var(--white); border: 1px solid var(--tarmac); color: var(--tarmac); font-family: inherit; padding: 0.4rem 0.9rem; border-radius: 6px; margin: 0.4rem 0.4rem 0 0; cursor: pointer; font-size: 0.95rem; }
   button:hover { background: var(--steel); }
   button:disabled { opacity: 0.35; cursor: default; }
-  button.big { font-size: 1.5rem; padding: 1.6rem 1rem; flex: 1; margin: 0; font-family: 'Space Grotesk', sans-serif; }
+  button.big { font-size: 1.5rem; padding: 1.6rem 1rem; width: 100%; margin: 0; font-family: 'Space Grotesk', sans-serif; }
   button.start { font-size: 1.5rem; padding: 1.6rem 1rem; width: 98%; font-family: 'Space Grotesk', sans-serif; }
+  .hint { text-align: center; font-size: 0.7rem; color: rgba(29, 29, 39, 0.45); margin-top: 0.25rem; }
+  button:disabled + .hint { opacity: 0.35; }
   .small button { font-size: 0.78rem; padding: 0.25rem 0.6rem; border-color: var(--steel); color: rgba(29, 29, 39, 0.65); }
   button.success { background: var(--go); border-color: var(--go); color: var(--white); }
   button.fail { background: var(--red); border-color: var(--red); color: var(--white); }
@@ -65,7 +67,7 @@
 <div class="grid">
 <div>
   <div class="card">
-    <h2>Starting point</h2>
+    <h2>Starting Point</h2>
     <div id="init" style="display:grid; grid-template-columns:1fr 1fr; gap:0 0.8rem">
       <label>kp<input id="init_kp" type="number" step="any"></label>
       <label>kd<input id="init_kd" type="number" step="any"></label>
@@ -82,10 +84,17 @@
   </div>
   <div class="card">
     <div class="phase" id="phase">IDLE</div>
-    <button id="b_start" class="start primary" onclick="post('/episode/start')">START RUN (space)</button>
+    <button id="b_start" class="start primary" onclick="post('/episode/start')">START RUN</button>
+    <div class="hint">space</div>
     <div style="margin-top:0.6rem; display:flex; gap:0.6rem">
-      <button id="b_succ" class="big success" onclick="label('success')">SUCCESS (s)</button>
-      <button id="b_fail" class="big fail" onclick="label('fail')">FAIL (f)</button>
+      <div style="flex:1">
+        <button id="b_succ" class="big success" onclick="label('success')">SUCCESS</button>
+        <div class="hint">s</div>
+      </div>
+      <div style="flex:1">
+        <button id="b_fail" class="big fail" onclick="label('fail')">FAIL</button>
+        <div class="hint">f</div>
+      </div>
     </div>
     <div class="small" style="margin-top:0.6rem">
       <button id="b_disc" onclick="label('discard')">Discard</button>
@@ -104,15 +113,15 @@
 </div>
 <div>
   <div class="card">
-    <h2>Equations, live</h2>
+    <h2>Policy Equations</h2>
     <div class="readout" id="eqs" style="font-family:ui-monospace, Menlo, monospace; font-size:0.82rem; line-height:1.7"></div>
   </div>
   <div class="card">
-    <h2>Speed staircase</h2>
+    <h2>Speed Staircase</h2>
     <canvas id="stair" width="900" height="220"></canvas>
     <h2>Gains</h2>
     <canvas id="gainc" width="900" height="220"></canvas>
-    <h2>Episode duration &mdash; is it getting better?</h2>
+    <h2>Episode Duration</h2>
     <canvas id="durc" width="900" height="180"></canvas>
   </div>
   <div class="card">
@@ -127,18 +136,18 @@
 
 <script>
 const HYPER_GROUPS = [
-  ['Learning rate', ['sigma0', 'sigma_min', 'sigma_max', 'a_up', 'a_down', 'sigma_kick']],
-  ['Speed staircase', ['speed_step', 'confirm_runs', 'speed_backoff', 'patience', 'speed_floor', 'speed_max']],
-  ['Cost function', ['duration_slack']],
+  ['Learning Rate', ['sigma0', 'sigma_min', 'sigma_max', 'a_up', 'a_down', 'sigma_kick']],
+  ['Speed Staircase', ['speed_step', 'confirm_runs', 'speed_backoff', 'patience', 'speed_floor', 'speed_max']],
+  ['Cost Function', ['duration_slack']],
 ];
 const HYPER = HYPER_GROUPS.flatMap(([, ks]) => ks);
 const GAIN_COLORS = { kp: '#FF0033', kd: '#FFD700', speed_kp: '#7EC8E3', speed_kd: '#FFFFFF' };
 const TIPS = {
   sigma0: 'Learning rate at the start (after Reset).',
   a_up: 'Learning rate grows by this on every success.',
-  a_down: 'Learning rate shrinks by this on every fail. Near 1.0 = gentle.',
-  sigma_min: 'Learning rate floor. Raise this if learning feels slow.',
-  sigma_max: 'Learning rate ceiling. Lower this if proposals feel reckless.',
+  a_down: 'Learning rate shrinks by this on every fail. Near 1.0 = small steps.',
+  sigma_min: 'Learning rate floor. Raise if learning feels slow.',
+  sigma_max: 'Learning rate ceiling. Lower if proposals swing too far.',
   speed_step: 'Speed goes up by this after confirm_runs successes in a row.',
   speed_backoff: 'Speed goes down by this after patience fails in a row.',
   patience: 'Fails in a row before the speed backs off.',
@@ -289,8 +298,7 @@ function drawDurations(hist) {
                8, py(thr) - 5);
   }
   x.fillStyle = '#F5F5F7'; x.font = '11px Helvetica';
-  x.fillText(`seconds per episode, 0..${dmax.toFixed(0)}s. Red rising = surviving longer. ` +
-             `Green falling = faster laps. Check dist: far = progress, short = just slow.`, 8, 14);
+  x.fillText(`seconds per episode (0..${dmax.toFixed(0)}s) | dist: far = progress, short = slow`, 8, 14);
 }
 
 function fmtGains(g) {

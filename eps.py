@@ -28,11 +28,13 @@ import json
 import math
 from pathlib import Path
 import random
+import signal
 import threading
 import time
 
 from ackermann_msgs.msg import AckermannDriveStamped
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from nav_msgs.msg import Odometry
@@ -46,7 +48,7 @@ LEDGER = BASE / 'ledger.jsonl'
 INIT_MARK = BASE / '.init_set'   # exists once the starting point is committed
 
 GAIN_KEYS = ('kp', 'kd', 'speed_kp', 'speed_kd')
-PLANT_INIT_KEYS = ('width', 'window', 'side_weight', 'lookahead')  # set once at Starting point, never learned
+PLANT_INIT_KEYS = ('width', 'window', 'side_weight', 'lookahead')  # set once, never learned
 NORM_CLAMP = (0.2, 5.0)     # normalized gain bounds: 0.2x .. 5x nominal
 SEARCH_STEP = 2             # gap follower constants, as in wallfollow
 CENTER_BIAS = 0.006
@@ -589,16 +591,42 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+def _spin(node):
+    try:
+        rclpy.spin(node)
+    except ExternalShutdownException:
+        pass
+
+
 def main():
     global session, node
     load_cfg()
     session = Session(dict(_cfg))
     rclpy.init()
     node = EpsNode(session)
-    threading.Thread(target=rclpy.spin, args=(node,), daemon=True).start()
+    spin = threading.Thread(target=_spin, args=(node,), daemon=True)
+    spin.start()
+    server = ThreadingHTTPServer(('0.0.0.0', PORT), Handler)
+
+    # rclpy.init() installs SIGINT/SIGTERM handlers that shut the ROS context
+    # down but leave serve_forever() blocked, so the process outlives the
+    # signal until systemd's TimeoutStopSec expires and SIGKILLs it. Take the
+    # signals back. shutdown() has to run off the serving thread or it
+    # deadlocks waiting for the loop it is called from.
+    def stop(*_):
+        threading.Thread(target=server.shutdown, daemon=True).start()
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+
     print(f'EPS dashboard on http://0.0.0.0:{PORT} '
           f'(resumed at episode {session.learner.episode})')
-    ThreadingHTTPServer(('0.0.0.0', PORT), Handler).serve_forever()
+    server.serve_forever()
+
+    # Unwind the ROS wait before the interpreter tears the context down;
+    # otherwise the spin thread aborts the process from C++.
+    rclpy.shutdown()
+    spin.join(timeout=2)
 
 
 if __name__ == '__main__':
