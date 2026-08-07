@@ -56,7 +56,7 @@
 <h1>Episodic Policy Search (EPS) Dashboard</h1>
 <div class="meta">episode: <b id="ep">0</b> &bull; speed: <b id="spd">?</b> &bull; sigma: <b id="sig">?</b>
   &bull; p*: <b id="pstar">?</b> &bull; observed: <b id="obs">?</b>
-  &bull; best speed: <b id="best">none</b></div>
+  &bull; best speed: <b id="best">none</b> &bull; best lap: <b id="bestlap">none</b></div>
 </div>
 <div>
 <button onclick="if(confirm('Reset everything? Gains to nominal, speed to floor, charts and ledger cleared (old ledger is archived on the car).')) post('/learner', {action:'reset'})">Reset learner</button>
@@ -122,6 +122,7 @@
     <h2>Gains</h2>
     <canvas id="gainc" width="900" height="220"></canvas>
     <h2>Episode Duration</h2>
+    <div class="readout" id="durrule" style="margin:0 0 0.4rem; font-weight:bold"></div>
     <canvas id="durc" width="900" height="180"></canvas>
   </div>
   <div class="card">
@@ -326,6 +327,7 @@ function update() {
     document.getElementById('pstar').textContent = d.pstar ?? '?';
     document.getElementById('obs').textContent = d.observed ?? 'n/a';
     document.getElementById('best').textContent = d.best_speed ?? 'none';
+    document.getElementById('bestlap').textContent = d.best_lap ? d.best_lap + 's' : 'none';
     const p = d.phase;
     document.getElementById('b_start').disabled = p !== 'IDLE';
     document.getElementById('b_succ').disabled = !(p === 'RUNNING' || p === 'AWAITING_LABEL');
@@ -364,6 +366,10 @@ function update() {
     drawStaircase(hist);
     drawGains(hist);
     drawDurations(hist);
+    const _thr = d.best_lap ? (d.best_lap * d.hyper.duration_slack).toFixed(1) : null;
+    document.getElementById('durrule').textContent = _thr
+      ? `lap <= ${_thr}s = SUCCESS  |  above ${_thr}s = SLOW   (best ${d.best_lap}s x slack ${d.hyper.duration_slack}; a faster lap auto-updates the best)`
+      : 'no successful lap at this speed yet: the first success sets the bar';
     document.getElementById('ledger').innerHTML = hist.slice(-12).reverse().map(h =>
       `<tr><td>${h.ep}</td><td>${h.t ?? ''}</td><td>${h.speed}</td>
        <td class="${h.outcome === 'success' ? 'ok' : 'bad'}" ${h.outcome === 'slow' ? 'style="color:#B8860B"' : ''}>${h.outcome}</td>
