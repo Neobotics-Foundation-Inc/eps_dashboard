@@ -181,6 +181,22 @@
   #form input[type=range] { accent-color: var(--nb-red); border: none; padding: 0; box-shadow: none; background: transparent; }
   #form b { color: var(--nb-red); font-family: var(--mono-font); font-size: 0.8rem; }
 
+  /* Name on the left, its info circle beside it, input below. */
+  .rowline { display: flex; align-items: center; gap: 2px; }
+
+  /* Hyperparameter tips sit centred under their circle, so neither grid
+     column pushes the popover off the card. */
+  #hp .info .tip { left: 50%; right: auto; transform: translateX(-50%); width: min(250px, 78vw); }
+
+  /* A grid item's automatic minimum is its content's min-content width, so
+     without this the column grows past a phone screen and takes every card
+     with it. */
+  .grid > .col { min-width: 0; }
+
+  /* Eleven mono columns will not fit a phone, so the ledger scrolls inside
+     its card rather than stretching the page. */
+  .tablewrap { overflow-x: auto; }
+
   .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
   .btn {
     background: transparent;
@@ -332,6 +348,118 @@
   /* Ledger outcomes, coloured by the class the script sets. */
   td.ok { color: var(--go); font-weight: 700; }
   td.bad { color: var(--nb-red); font-weight: 700; }
+
+  /* ── Info circle ────────────────────────────────────────────────
+     Hover reads it; a tap pins it, which is what a touch screen needs. */
+  .info {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    margin-left: 5px;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    font-family: var(--body-font);
+    font-size: 10px;
+    font-style: italic;
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: 0;
+    text-transform: none;
+    opacity: 0.75;
+    cursor: help;
+    user-select: none;
+    flex: none;
+  }
+  .info:hover, .info.open { opacity: 1; border-color: var(--nb-red); color: var(--nb-red); }
+  .info .tip {
+    display: none;
+    position: absolute;
+    top: 21px;
+    right: -6px;
+    width: 250px;
+    padding: 10px 12px;
+    background: var(--card);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-top: 2px solid var(--nb-red);
+    border-radius: 9px;
+    box-shadow: var(--shadow-card-lg);
+    font-family: var(--body-font);
+    font-size: 0.75rem;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: normal;
+    text-transform: none;
+    text-align: left;
+    white-space: normal;
+    z-index: 60;
+  }
+  .info:hover .tip, .info.open .tip { display: block; }
+
+  /* ── Toast: says what happened after Save or Load ─────────────── */
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: 26px;
+    transform: translateX(-50%) translateY(14px);
+    background: var(--nb-blue);
+    color: var(--nb-white);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-left: 3px solid var(--nb-red);
+    border-radius: 9px;
+    padding: 10px 16px;
+    font-family: var(--body-font);
+    font-size: 0.82rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 160ms ease-out, transform 160ms ease-out;
+    z-index: 90;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* A quiet note under a tune panel. */
+  .apply-note {
+    font-size: 0.72rem;
+    line-height: 1.45;
+    color: var(--ink-muted);
+    margin-top: 10px;
+    padding-left: 9px;
+    border-left: 2px solid var(--nb-red);
+  }
+
+  /* ── Phone and tablet ──────────────────────────────────────────── */
+  @media (max-width: 900px) {
+    header { padding: 10px 14px; gap: 10px; }
+    header img.logo { height: 32px; }
+    header h1 { font-size: 0.8rem; }
+    .stats { gap: 12px; width: 100%; margin-left: 0; }
+    .stat i { font-size: 0.56rem; }
+    .stat b { font-size: 0.82rem; }
+    main { padding: 14px 14px 24px; }
+    .grid { grid-template-columns: 1fr; gap: 12px; }
+    .card { padding: 12px 13px; }
+    canvas { max-width: 100%; }
+    .info .tip { width: min(250px, 74vw); }
+  }
+  @media (max-width: 560px) {
+    #init, #hp { grid-template-columns: 1fr; }
+    header h1 .thin { display: block; }
+    .btn { padding: 8px 13px; font-size: 0.8rem; }
+    .actions { gap: 7px; }
+    .info { width: 16px; height: 16px; font-size: 11px; }
+    .info .tip { right: auto; left: -8px; }
+  }
+  /* Touch pointers get bigger targets than a mouse needs. */
+  @media (pointer: coarse) {
+    .btn { min-height: 38px; }
+    select { min-height: 38px; }
+    #form input, #init input, #hp input { min-height: 36px; font-size: 16px; }
+  }
 </style>
 <script>
   /* Applied before first paint, so a dark session never flashes white. */
@@ -347,6 +475,30 @@
     el.dataset.theme = el.dataset.theme === "dark" ? "light" : "dark";
     localStorage.setItem("wf-theme", el.dataset.theme);
   }
+</script>
+
+<script>
+  /* Confirms Save and Load, so an unsaved tune is never a guess. */
+  function toast(msg) {
+    var t = document.getElementById('toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'toast';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(window.__toastTimer);
+    window.__toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2200);
+  }
+  /* One open tip at a time, and a tap outside closes it. */
+  document.addEventListener('click', function (e) {
+    var hit = e.target.closest ? e.target.closest('.info') : null;
+    document.querySelectorAll('.info.open').forEach(function (el) {
+      if (el !== hit) el.classList.remove('open');
+    });
+    if (hit) hit.classList.toggle('open');
+  });
 </script>
 </head>
 <body>
@@ -417,10 +569,12 @@
     <div id="hp"></div>
     <div class="actions">
       <button class="btn primary" onclick="applyHyper()">Apply</button>
-      <button class="btn" onclick="post('/save').then(() => note('Saved to eps.yaml'))">Save</button>
-      <button class="btn" onclick="post('/load').then(() => { built = false; note('Loaded from eps.yaml'); })">Load</button>
+      <button class="btn" onclick="post('/save').then(() => { note('Saved to eps.yaml'); toast('Saved to eps.yaml'); })">Save</button>
+      <button class="btn" onclick="post('/load').then(() => { built = false; note('Loaded from eps.yaml'); toast('Loaded from eps.yaml'); })">Load</button>
     </div>
     <span class="readout" id="hpnote"></span>
+    <p class="apply-note">Press Apply before Save. Save writes the values the tuner is
+    running now, so anything typed but not applied will not be saved.</p>
   </section>
 </div>
 
@@ -442,9 +596,9 @@
 
   <section class="card">
     <div class="card-title">Ledger <a href="/ledger" download="ledger.jsonl" style="font-size:0.7rem; letter-spacing:0; text-transform:none; font-weight:400">download</a></div>
-    <table><thead><tr><th>ep</th><th>time</th><th>speed</th><th>outcome</th><th>sigma</th>
+    <div class="tablewrap"><table><thead><tr><th>ep</th><th>time</th><th>speed</th><th>outcome</th><th>sigma</th>
       <th>kp</th><th>kd</th><th>speed_kp</th><th>speed_kd</th><th>dur s</th><th>dist m</th></tr></thead>
-      <tbody id="ledger"></tbody></table>
+      <tbody id="ledger"></tbody></table></div>
   </section>
 </div>
 </div>
@@ -529,7 +683,7 @@ function buildHyper(h) {
   document.getElementById('hp').innerHTML = HYPER_GROUPS.map(([g, ks]) =>
     `<h3 style="grid-column:1/-1; font-size:0.82rem; margin-top:0.7rem">${g}</h3>` +
     ks.map(k =>
-      `<label data-tip="${TIPS[k]}" style="cursor:help">${k}<input id="hp_${k}" type="number" step="any" value="${h[k]}"></label>`
+      `<label><span class="rowline">${k}<span class="info">i<span class="tip">${TIPS[k]}</span></span></span><input id="hp_${k}" type="number" step="any" value="${h[k]}"></label>`
     ).join('')).join('');
 }
 
