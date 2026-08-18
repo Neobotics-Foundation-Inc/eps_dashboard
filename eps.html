@@ -3,72 +3,378 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Episodic Policy Search (EPS) Dashboard</title>
+<title>Episodic Policy Search Dashboard</title>
 <style>
-  /* Neobotics tokens, same scheme as the wallfollow dashboard. */
-  :root { --white: #FFFFFF; --halo: #F5F5F7; --steel: #E2E2E2; --carbon: #1D1D27; --tarmac: #1B2036; --red: #FF0033; --go: #2E7D32; }
+  /* Neobotics official palette (nb-tokens.ts / neobotics.org/about/branding).
+     Light: Halo White dominates. Dark: Tarmac Blue dominates. Red stays a
+     hint in both: the header rule, the live dot, primary actions, focus. */
+  :root {
+    --nb-red: #FF0033;
+    --nb-red-bright: #FF1A4A;
+    --nb-blue: #1B2036;
+    --nb-blue-deep: #13172A;
+    --nb-white: #FFFFFF;
+    --heading-font: 'Kernel', 'Apotek Extended', 'Space Grotesk', sans-serif;
+    --body-font: 'Akzidenz-Grotesk BQ', 'Akzidenz-Grotesk', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    --mono-font: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    --radius: 12px;
+
+    /* Light mode: Halo White dominant. */
+    --page: #FFFFFF;
+    --card: #FFFFFF;
+    --header-bg: #1B2036;
+    --ink: #1B2036;
+    --ink-muted: rgba(27, 32, 54, 0.66);
+    --ink-dim: rgba(27, 32, 54, 0.42);
+    --line: rgba(27, 32, 54, 0.10);
+    --field-bg: #FFFFFF;
+    --btn-border: rgba(27, 32, 54, 0.22);
+    --btn-hover: #F2F3F6;
+    --shadow-card: 0 4px 14px rgba(27, 32, 54, 0.08);
+    --shadow-card-lg: 0 12px 32px rgba(27, 32, 54, 0.14);
+    --wash-a: rgba(27, 32, 54, 0.05);
+    --wash-b: rgba(27, 32, 54, 0.04);
+  }
+
+  /* Dark mode: Tarmac Blue dominant. The cards carry the tarmac and the
+     page sits one step deeper, so the blue is the surface you actually
+     read on rather than only a backdrop. */
+  [data-theme="dark"] {
+    --page: #13172A;
+    --card: #1B2036;
+    --header-bg: #13172A;
+    --ink: #FFFFFF;
+    --ink-muted: rgba(255, 255, 255, 0.72);
+    --ink-dim: rgba(255, 255, 255, 0.48);
+    --line: rgba(255, 255, 255, 0.12);
+    --field-bg: rgba(255, 255, 255, 0.06);
+    --btn-border: rgba(255, 255, 255, 0.28);
+    --btn-hover: rgba(255, 255, 255, 0.10);
+    --shadow-card: 0 4px 14px rgba(0, 0, 0, 0.32);
+    --shadow-card-lg: 0 12px 32px rgba(0, 0, 0, 0.44);
+    --wash-a: rgba(255, 0, 51, 0.06);
+    --wash-b: rgba(255, 255, 255, 0.03);
+  }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: var(--white); color: var(--carbon); }
-  .topbar { background: var(--tarmac); color: var(--halo); padding: 0.8rem 1.5rem; display: flex; justify-content: space-between; align-items: center; }
-  .topbar button { background: transparent; border: 1px solid rgba(245, 245, 247, 0.5); color: var(--halo); font-family: inherit; padding: 0.4rem 1rem; border-radius: 6px; cursor: pointer; margin: 0 0 0 0.5rem; font-size: 0.85rem; }
-  .topbar button:hover { background: rgba(245, 245, 247, 0.15); }
-  .topbar h1 { font-family: 'Space Grotesk', 'Helvetica Neue', sans-serif; font-size: 1.3rem; }
-  .meta { color: rgba(245, 245, 247, 0.72); font-size: 0.85rem; margin-top: 0.2rem; }
-  .meta b { color: var(--white); }
-  main { padding: 1rem 1.5rem; }
-  .grid { display: grid; grid-template-columns: 340px 1fr; gap: 1rem; }
-  @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
-  .card { background: var(--white); border: 1px solid var(--steel); border-radius: 12px; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 6px 18px rgba(29, 29, 39, 0.08); }
-  .card h2 { font-family: 'Space Grotesk', 'Helvetica Neue', sans-serif; font-size: 1rem; color: var(--tarmac); margin-bottom: 0.5rem; }
-  canvas { background: var(--tarmac); border-radius: 6px; width: 100%; display: block; margin-bottom: 0.8rem; }
-  label { display: block; color: rgba(29, 29, 39, 0.6); font-size: 0.78rem; margin-top: 0.5rem; }
-  input { width: 100%; background: var(--white); border: 1px solid var(--steel); color: var(--carbon); font-family: inherit; padding: 0.3rem; border-radius: 6px; }
-  button { background: var(--white); border: 1px solid var(--tarmac); color: var(--tarmac); font-family: inherit; padding: 0.4rem 0.9rem; border-radius: 6px; margin: 0.4rem 0.4rem 0 0; cursor: pointer; font-size: 0.95rem; }
-  button:hover { background: var(--steel); }
-  button:disabled { opacity: 0.35; cursor: default; }
-  button.big { font-size: 1.5rem; padding: 1.6rem 1rem; width: 100%; margin: 0; font-family: 'Space Grotesk', sans-serif; }
-  button.start { font-size: 1.5rem; padding: 1.6rem 1rem; width: 98%; font-family: 'Space Grotesk', sans-serif; }
-  .hint { text-align: center; font-size: 0.7rem; color: rgba(29, 29, 39, 0.45); margin-top: 0.25rem; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: var(--body-font);
+    background: var(--page);
+    color: var(--ink);
+    font-size: 16px;
+    line-height: 1.5;
+    min-height: 100dvh;
+    transition: background 180ms ease-out, color 180ms ease-out;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(700px 480px at 90% 0%, var(--wash-a), transparent 65%),
+      radial-gradient(560px 420px at 0% 100%, var(--wash-b), transparent 60%);
+  }
+  .mono, .stat b, #detail, #loginfo, select { font-family: var(--mono-font); font-variant-numeric: tabular-nums; }
+
+  /* Header: tarmac in light, one step deeper in dark. Red rule in both. */
+  header {
+    background: var(--header-bg);
+    border-bottom: 2px solid var(--nb-red);
+    padding: 12px 22px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+  header img.logo { height: 42px; display: block; }
+  header .divider { width: 1px; height: 22px; background: rgba(255, 255, 255, 0.16); }
+  header h1 {
+    font-family: var(--heading-font);
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--nb-white);
+  }
+  header h1 .thin { font-weight: 400; color: rgba(255, 255, 255, 0.72); }
+
+  .stats { margin-left: auto; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .stat { display: flex; flex-direction: column; line-height: 1.25; }
+  .stat i {
+    font-style: normal;
+    font-size: 0.6rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.45);
+  }
+  .stat b { font-size: 0.9rem; font-weight: 600; color: var(--nb-white); }
+  .stat u { text-decoration: none; color: rgba(255, 255, 255, 0.45); font-size: 0.7rem; }
+
+  main { padding: 20px 22px 28px; max-width: 1680px; margin: 0 auto; }
+  .grid { display: grid; grid-template-columns: minmax(360px, 460px) 1fr 264px; gap: 16px; margin-bottom: 16px; align-items: start; }
+  @media (max-width: 1180px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    box-shadow: var(--shadow-card);
+    transition: box-shadow 200ms ease-out, background 180ms ease-out, border-color 180ms ease-out;
+  }
+  .card:hover { box-shadow: var(--shadow-card-lg); }
+  @media (prefers-reduced-motion: reduce) { *, *::before { transition: none !important; } }
+  .card-title {
+    font-family: var(--heading-font);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .live::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--nb-red);
+    display: inline-block;
+    box-shadow: 0 0 0 3px rgba(255, 0, 51, 0.16);
+  }
+  .card-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; }
+  .card-head .card-title { margin-bottom: 0; }
+
+  /* The plot surface stays a dark instrument panel in both themes: the
+     script draws these light-on-dark. */
+  canvas { background: var(--nb-blue-deep); border-radius: 8px; width: 100%; display: block; }
+  [data-theme="dark"] canvas { border: 1px solid rgba(255, 255, 255, 0.07); }
+
+  #form label {
+    display: block;
+    margin-top: 11px;
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+    color: var(--ink-dim);
+  }
+  #form label:first-child { margin-top: 0; }
+  #form input {
+    width: 100%;
+    margin-top: 4px;
+    background: var(--field-bg);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    color: var(--ink);
+    font-family: var(--mono-font);
+    font-size: 0.85rem;
+    padding: 5px 8px;
+  }
+  #form input:focus { outline: none; border-color: var(--nb-red); box-shadow: 0 0 0 3px rgba(255, 0, 51, 0.14); }
+  #form input[type=range] { accent-color: var(--nb-red); border: none; padding: 0; box-shadow: none; background: transparent; }
+  #form b { color: var(--nb-red); font-family: var(--mono-font); font-size: 0.8rem; }
+
+  .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .btn {
+    background: transparent;
+    border: 1px solid var(--btn-border);
+    color: var(--ink);
+    font-family: var(--body-font);
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 6px 13px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background 140ms ease-out, border-color 140ms ease-out;
+  }
+  .btn:hover { background: var(--btn-hover); }
+  .btn.primary { background: var(--nb-red); border-color: var(--nb-red); color: var(--nb-white); }
+  .btn.primary:hover { background: var(--nb-red-bright); border-color: var(--nb-red-bright); }
+  /* Reset is destructive, so it carries the brand red in both themes. */
+  .btn.danger, header .btn.danger { background: var(--nb-red); border-color: var(--nb-red); color: var(--nb-white); }
+  .btn.danger:hover, header .btn.danger:hover { background: var(--nb-red-bright); border-color: var(--nb-red-bright); }
+  header .btn { border-color: rgba(255, 255, 255, 0.28); color: var(--nb-white); }
+  header .btn:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.5); }
+  /* One button, two labels. The word comes from CSS so it is correct on
+     first paint without waiting for script. */
+  .theme-btn::after { content: "Dark"; }
+  [data-theme="dark"] .theme-btn::after { content: "Light"; }
+  select {
+    background: var(--field-bg);
+    border: 1px solid var(--btn-border);
+    color: var(--ink);
+    font-size: 0.78rem;
+    padding: 6px 8px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .readout { font-size: 0.76rem; color: var(--ink-muted); margin-top: 10px; }
+  .card-head .readout { margin-top: 0; }
+  /* Episodic Policy Search specifics on top of the shared Neobotics theme. */
+  :root { --go: #1E9E5A; --go-bright: #23B366; }
+  .grid { grid-template-columns: 344px 1fr; }
+  @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+  .col { display: flex; flex-direction: column; gap: 16px; }
+  canvas { margin-bottom: 12px; }
+  canvas:last-child { margin-bottom: 0; }
+
+  /* Two-up parameter grids (starting point, hyperparameters). */
+  #init, #hp { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+  #init label, #hp label {
+    display: block;
+    margin-top: 11px;
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+    color: var(--ink-dim);
+  }
+  #init input, #hp input {
+    width: 100%;
+    margin-top: 4px;
+    background: var(--field-bg);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    color: var(--ink);
+    font-family: var(--mono-font);
+    font-size: 0.85rem;
+    padding: 5px 8px;
+  }
+  #init input:focus, #hp input:focus {
+    outline: none;
+    border-color: var(--nb-red);
+    box-shadow: 0 0 0 3px rgba(255, 0, 51, 0.14);
+  }
+  #hp h3 {
+    grid-column: 1 / -1;
+    font-family: var(--heading-font);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin-top: 14px;
+  }
+
+  /* The run controls: the biggest targets on the page, because they are
+     pressed while watching the car rather than the screen. */
+  .phase {
+    font-family: var(--heading-font);
+    font-size: 1.35rem;
+    letter-spacing: 0.02em;
+    color: var(--ink);
+    margin: 2px 0 12px;
+  }
+  button.start, button.big {
+    font-family: var(--heading-font);
+    font-size: 1.35rem;
+    letter-spacing: 0.04em;
+    padding: 22px 12px;
+    width: 100%;
+    margin: 0;
+    border-radius: 10px;
+    cursor: pointer;
+    border: 1px solid var(--btn-border);
+    background: transparent;
+    color: var(--ink);
+    transition: background 140ms ease-out, border-color 140ms ease-out;
+  }
+  button.start.primary { background: var(--nb-red); border-color: var(--nb-red); color: var(--nb-white); }
+  button.start.primary:hover { background: var(--nb-red-bright); border-color: var(--nb-red-bright); }
+  button.success { background: var(--go); border-color: var(--go); color: var(--nb-white); }
+  button.success:hover { background: var(--go-bright); border-color: var(--go-bright); }
+  button.fail { background: var(--nb-red); border-color: var(--nb-red); color: var(--nb-white); }
+  button.fail:hover { background: var(--nb-red-bright); border-color: var(--nb-red-bright); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  .hint {
+    text-align: center;
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-top: 5px;
+  }
   button:disabled + .hint { opacity: 0.35; }
-  .small button { font-size: 0.78rem; padding: 0.25rem 0.6rem; border-color: var(--steel); color: rgba(29, 29, 39, 0.65); }
-  button.success { background: var(--go); border-color: var(--go); color: var(--white); }
-  button.fail { background: var(--red); border-color: var(--red); color: var(--white); }
-  button.primary { background: var(--tarmac); color: var(--halo); }
-  .phase { font-family: 'Space Grotesk', sans-serif; font-size: 1.6rem; color: var(--tarmac); margin: 0.2rem 0 0.6rem; }
-  .readout { font-size: 0.83rem; margin-top: 0.5rem; white-space: pre-line; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 0.5rem; }
-  th, td { text-align: left; padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--steel); }
-  th { color: var(--tarmac); }
-  .ok { color: var(--go); font-weight: bold; }
-  .bad { color: var(--red); font-weight: bold; }
-  #hp label { position: relative; }
-  #hp label:hover::after, #hp label:focus-within::after {
-    content: attr(data-tip); position: absolute; left: 0; bottom: 100%;
-    background: var(--tarmac); color: var(--halo); padding: 0.45rem 0.6rem;
-    border-radius: 6px; font-size: 0.78rem; line-height: 1.35; width: 230px;
-    z-index: 10; box-shadow: 0 6px 18px rgba(29, 29, 39, 0.3); pointer-events: none; }
+  .small { display: flex; gap: 8px; margin-top: 12px; }
+  .small button {
+    font-family: var(--body-font);
+    font-size: 0.76rem;
+    font-weight: 600;
+    padding: 5px 11px;
+    border-radius: 7px;
+    border: 1px solid var(--btn-border);
+    background: transparent;
+    color: var(--ink-muted);
+    cursor: pointer;
+  }
+  .small button:hover { background: var(--btn-hover); }
+  .readout { white-space: pre-line; }
+  #eqs { font-family: var(--mono-font); font-size: 0.8rem; line-height: 1.75; }
+
+  /* Ledger: every attempt the search made, newest first. */
+  table { width: 100%; border-collapse: collapse; font-size: 0.76rem; margin-top: 6px; font-family: var(--mono-font); }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+  th {
+    font-family: var(--body-font);
+    font-size: 0.64rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    font-weight: 700;
+  }
+  td { color: var(--ink-muted); }
+  a { color: var(--nb-red); }
+  /* Ledger outcomes, coloured by the class the script sets. */
+  td.ok { color: var(--go); font-weight: 700; }
+  td.bad { color: var(--nb-red); font-weight: 700; }
 </style>
+<script>
+  /* Applied before first paint, so a dark session never flashes white. */
+  (function () {
+    var saved = localStorage.getItem("wf-theme");
+    if (!saved) {
+      saved = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+    document.documentElement.dataset.theme = saved;
+  })();
+  function toggleTheme() {
+    var el = document.documentElement;
+    el.dataset.theme = el.dataset.theme === "dark" ? "light" : "dark";
+    localStorage.setItem("wf-theme", el.dataset.theme);
+  }
+</script>
 </head>
 <body>
 
-<div class="topbar">
-<div>
-<h1>Episodic Policy Search (EPS) Dashboard</h1>
-<div class="meta">episode: <b id="ep">0</b> &bull; speed: <b id="spd">?</b> &bull; sigma: <b id="sig">?</b>
-  &bull; p*: <b id="pstar">?</b> &bull; observed: <b id="obs">?</b>
-  &bull; best speed: <b id="best">none</b> &bull; best lap: <b id="bestlap">none</b></div>
-</div>
-<div>
-<button onclick="if(confirm('Reset everything? Gains to nominal, speed to floor, charts and ledger cleared (old ledger is archived on the car).')) post('/learner', {action:'reset'})">Reset learner</button>
-<button onclick="post('/learner', {action:'revert_best'})">Revert to best</button>
-</div>
-</div>
+<header>
+  <img class="logo" alt="Neobotics" src="data:image/webp;base64,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">
+  <div class="divider" aria-hidden="true"></div>
+  <h1>NeoRacer <span class="thin">Policy Search</span></h1>
+  <div class="stats">
+    <span class="stat"><i>episode</i><b id="ep">0</b></span>
+    <span class="stat"><i>speed</i><b id="spd">?</b></span>
+    <span class="stat"><i>sigma</i><b id="sig">?</b></span>
+    <span class="stat"><i>p*</i><b id="pstar">?</b></span>
+    <span class="stat"><i>observed</i><b id="obs">?</b></span>
+    <span class="stat"><i>best speed</i><b id="best">none</b></span>
+    <span class="stat"><i>best lap</i><b id="bestlap">none</b></span>
+    <button class="btn theme-btn" onclick="toggleTheme()" title="Switch between light and dark"></button>
+    <button class="btn danger" onclick="if(confirm('Reset everything? Gains to nominal, speed to floor, charts and ledger cleared (old ledger is archived on the car).')) post('/learner', {action:'reset'})">Reset learner</button>
+    <button class="btn" onclick="post('/learner', {action:'revert_best'})">Revert to best</button>
+  </div>
+</header>
+
 <main>
 <div class="grid">
-<div>
-  <div class="card">
-    <h2>Starting Point</h2>
-    <div id="init" style="display:grid; grid-template-columns:1fr 1fr; gap:0 0.8rem">
+<div class="col">
+  <section class="card">
+    <div class="card-title">Starting Point</div>
+    <div id="init">
       <label>kp<input id="init_kp" type="number" step="any"></label>
       <label>kd<input id="init_kd" type="number" step="any"></label>
       <label>speed_kp<input id="init_speed_kp" type="number" step="any"></label>
@@ -79,14 +385,17 @@
       <label>side_weight<input id="init_side_weight" type="number" step="0.005"></label>
       <label>lookahead (m)<input id="init_lookahead" type="number" step="0.5"></label>
     </div>
-    <button id="b_init" onclick="setInit()">Set starting point</button>
+    <div class="actions">
+      <button class="btn" id="b_init" onclick="setInit()">Set starting point</button>
+    </div>
     <span class="readout" id="initnote"></span>
-  </div>
-  <div class="card">
+  </section>
+
+  <section class="card">
     <div class="phase" id="phase">IDLE</div>
     <button id="b_start" class="start primary" onclick="post('/episode/start')">START RUN</button>
     <div class="hint">space</div>
-    <div style="margin-top:0.6rem; display:flex; gap:0.6rem">
+    <div style="margin-top:12px; display:flex; gap:10px">
       <div style="flex:1">
         <button id="b_succ" class="big success" onclick="label('success')">SUCCESS</button>
         <div class="hint">s</div>
@@ -96,41 +405,47 @@
         <div class="hint">f</div>
       </div>
     </div>
-    <div class="small" style="margin-top:0.6rem">
+    <div class="small">
       <button id="b_disc" onclick="label('discard')">Discard</button>
       <button id="b_undo" onclick="post('/episode/undo')">Undo</button>
     </div>
     <div class="readout" id="gains"></div>
-  </div>
-  <div class="card">
-    <h2>Hyperparameters</h2>
-    <div id="hp" style="display:grid; grid-template-columns:1fr 1fr; gap:0 0.8rem"></div>
-    <button onclick="applyHyper()">Apply</button>
-    <button onclick="post('/save').then(() => note('Saved to eps.yaml'))">Save</button>
-    <button onclick="post('/load').then(() => { built = false; note('Loaded from eps.yaml'); })">Load</button>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Hyperparameters</div>
+    <div id="hp"></div>
+    <div class="actions">
+      <button class="btn primary" onclick="applyHyper()">Apply</button>
+      <button class="btn" onclick="post('/save').then(() => note('Saved to eps.yaml'))">Save</button>
+      <button class="btn" onclick="post('/load').then(() => { built = false; note('Loaded from eps.yaml'); })">Load</button>
+    </div>
     <span class="readout" id="hpnote"></span>
-  </div>
+  </section>
 </div>
-<div>
-  <div class="card">
-    <h2>Policy Equations</h2>
-    <div class="readout" id="eqs" style="font-family:ui-monospace, Menlo, monospace; font-size:0.82rem; line-height:1.7"></div>
-  </div>
-  <div class="card">
-    <h2>Speed Staircase</h2>
+
+<div class="col">
+  <section class="card">
+    <div class="card-title">Policy Equations</div>
+    <div class="readout" id="eqs"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-title"><span class="live"></span>Speed Staircase</div>
     <canvas id="stair" width="900" height="220"></canvas>
-    <h2>Gains</h2>
+    <div class="card-title" style="margin-top:14px">Gains</div>
     <canvas id="gainc" width="900" height="220"></canvas>
-    <h2>Episode Duration</h2>
-    <div class="readout" id="durrule" style="margin:0 0 0.4rem; font-weight:bold"></div>
+    <div class="card-title" style="margin-top:14px">Episode Duration</div>
+    <div class="readout" id="durrule" style="margin:0 0 6px; font-weight:bold"></div>
     <canvas id="durc" width="900" height="180"></canvas>
-  </div>
-  <div class="card">
-    <h2>Ledger <a href="/ledger" download="ledger.jsonl" style="font-size:0.8rem; margin-left:0.6rem">download</a></h2>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Ledger <a href="/ledger" download="ledger.jsonl" style="font-size:0.7rem; letter-spacing:0; text-transform:none; font-weight:400">download</a></div>
     <table><thead><tr><th>ep</th><th>time</th><th>speed</th><th>outcome</th><th>sigma</th>
       <th>kp</th><th>kd</th><th>speed_kp</th><th>speed_kd</th><th>dur s</th><th>dist m</th></tr></thead>
       <tbody id="ledger"></tbody></table>
-  </div>
+  </section>
 </div>
 </div>
 </main>
@@ -212,7 +527,7 @@ function buildHyper(h) {
   if (built) return;
   built = true;
   document.getElementById('hp').innerHTML = HYPER_GROUPS.map(([g, ks]) =>
-    `<h3 style="grid-column:1/-1; font-size:0.82rem; color:var(--tarmac); margin-top:0.7rem">${g}</h3>` +
+    `<h3 style="grid-column:1/-1; font-size:0.82rem; margin-top:0.7rem">${g}</h3>` +
     ks.map(k =>
       `<label data-tip="${TIPS[k]}" style="cursor:help">${k}<input id="hp_${k}" type="number" step="any" value="${h[k]}"></label>`
     ).join('')).join('');
