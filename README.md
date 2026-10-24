@@ -27,8 +27,10 @@ Dashboard, when enabled: `http://<car-ip>:8084`. Disable wallfollow, pursuit, an
 1. Students enter starting gains and speed in the Starting point card and press Set. It locks immediately; only Reset unlocks it.
 2. START RUN arms a mutated gain proposal and drives it. SUCCESS or FAIL ends the run and is the entire training signal; Discard voids a spoiled run, Undo takes back exactly one label.
 3. Success accepts the proposal and grows the mutation size sigma; failure keeps the old gains and shrinks it. confirm_runs successes in a row raise the speed; patience fails in a row back it off.
-4. A pass must also keep pace: slower than the best lap at that speed times duration_slack scores as slow and is rejected. Green, gold, red dots on the staircase chart.
-5. Reset archives the ledger, clears the charts, and returns gains and speed to the starting point.
+4. A pass must also keep pace: slower than the best lap at that speed times duration_slack scores as slow and is rejected. Green, yellow, red squares on the staircase chart.
+5. Reset (press and hold Hold to reset, in the Run panel) archives the ledger, clears the charts, and returns gains and speed to the starting point.
+
+Space, S and F start a run, label it a success and label it a fail. The page works with a mouse, a touch screen or the keyboard, on a laptop, a tablet or a phone, in a light or a dark theme (the switch in the top bar).
 
 ## Speed control
 
@@ -36,7 +38,7 @@ The staircase speed is a 0..1 command; times max_mps (the car's top speed, in ep
 
 ## Files
 
-eps.yaml holds the learner hyperparameters (hover any panel field for what it does), the plant settings, and the nominal gain vector that scales the search. ledger.jsonl is the session record, one row per label with the full learner state; Reset archives it as ledger_TIMESTAMP.jsonl. Both stay on the car and out of git.
+eps.yaml holds the learner hyperparameters (hover or tap the i beside any field for what it does), the plant settings, and the nominal gain vector that scales the search. ledger.jsonl is the session record, one row per label with the full learner state; Reset archives it as ledger_TIMESTAMP.jsonl. Both stay on the car and out of git.
 
 ## Safety
 
